@@ -21,7 +21,7 @@ function AuthForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [oauthBusy, setOauthBusy] = useState<"google" | "facebook" | null>(null);
+  const [oauthBusy, setOauthBusy] = useState<"google" | null>(null);
   // Gate render until mounted so server HTML and first client paint always
   // match — avoids hydration mismatches from search params, client state, and
   // password-manager/extension DOM injection that's common on auth forms.
@@ -70,7 +70,7 @@ function AuthForm() {
     }
   }
 
-  async function signInWithProvider(provider: "google" | "facebook") {
+  async function signInWithProvider(provider: "google") {
     setError(null);
     setOauthBusy(provider);
     try {
@@ -260,17 +260,6 @@ function AuthForm() {
               {oauthBusy === "google" ? "Redirecting…" : "Continue with Google"}
             </button>
 
-            <button
-              type="button"
-              onClick={() => signInWithProvider("facebook")}
-              disabled={!!oauthBusy}
-              className="w-full flex items-center justify-center gap-3 py-2.5 rounded-lg border border-border bg-[#1877F2] text-white font-medium text-sm hover:bg-[#1877F2]/90 disabled:opacity-60 transition-colors"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M24 12.07C24 5.41 18.63 0 12 0S0 5.4 0 12.07c0 6 4.39 10.97 10.13 11.87v-8.4H7.08v-3.47h3.05V9.41c0-3.02 1.8-4.69 4.54-4.69 1.31 0 2.69.24 2.69.24v2.97h-1.52c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.47h-2.8v8.4C19.61 23.04 24 18.07 24 12.07Z"/>
-              </svg>
-              {oauthBusy === "facebook" ? "Redirecting…" : "Continue with Facebook"}
-            </button>
           </div>
 
           <div className="mt-5 text-xs text-muted text-center">
