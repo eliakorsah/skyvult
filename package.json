@@ -1,0 +1,40 @@
+{
+  "name": "skyvult",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n NEXT,WS -c blue,green \"next dev -H 0.0.0.0\" \"node --env-file=.env.local --import=tsx --watch server/index.ts\"",
+    "dev:next": "next dev -H 0.0.0.0",
+    "dev:ws": "node --env-file=.env.local --import=tsx --watch server/index.ts",
+    "build": "next build",
+    "start": "concurrently -k -n NEXT,WS -c blue,green \"next start -H 0.0.0.0\" \"node --env-file=.env.local --import=tsx server/index.ts\"",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "@upstash/ratelimit": "^2.0.4",
+    "@upstash/redis": "^1.34.3",
+    "bcryptjs": "^2.4.3",
+    "framer-motion": "^12.40.0",
+    "lightweight-charts": "^4.2.1",
+    "next": "14.2.13",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.16.10",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@types/ws": "^8.5.12",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.0.1",
+    "dotenv": "^17.4.2",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}

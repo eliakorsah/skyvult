@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { height: 100%; background: #0b0e14; color: #e6e9ef; }
+* { box-sizing: border-box; }
+
+.btn {
+  @apply px-4 py-2.5 rounded-md font-semibold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed select-none touch-manipulation;
+}
+.btn-primary  { @apply bg-accent text-black hover:brightness-110; }
+.btn-secondary{ @apply bg-panel2 text-white border border-border hover:bg-border; }
+.btn-up       { @apply bg-up text-black hover:brightness-110; }
+.btn-down     { @apply bg-down text-white hover:brightness-110; }
+.btn-store    { @apply flex items-center gap-2.5 bg-panel2 border border-border rounded-xl px-4 py-2.5 hover:border-accent/40 transition-all active:scale-95 touch-manipulation select-none; }
+
+.input {
+  @apply w-full bg-panel2 border border-border rounded-md px-3 py-2.5 text-white outline-none focus:border-accent transition-colors text-base;
+}
+.card  { @apply bg-panel border border-border rounded-xl; }
+
+.tab       { @apply px-3 py-2 sm:py-1.5 rounded-md text-sm cursor-pointer transition-colors touch-manipulation; }
+.tab-active{ @apply bg-accent text-black font-semibold; }
+.tab-idle  { @apply text-muted hover:text-white; }
+
+@keyframes popin {
+  0%   { transform: scale(0.8); opacity: 0; }
+  60%  { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-popin { animation: popin 0.3s ease-out forwards; }
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.animate-slide-up { animation: slideUp 0.35s cubic-bezier(0.32,0.72,0,1) forwards; }
+
+@keyframes bounce-y {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(6px); }
+}
+.animate-bounce-y { animation: bounce-y 1.2s ease-in-out infinite; }
+
+/* Mobile-first scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0b0e14; }
+::-webkit-scrollbar-thumb { background: #1f2630; border-radius: 3px; }
+
+/* Trade bar height including iOS safe-area inset — used by chart offset and pickers */
+:root { --trade-bar-h: calc(210px + env(safe-area-inset-bottom, 0px)); }
+
+@media (max-width: 767px) {
+  .chart-area-mobile { bottom: var(--trade-bar-h); }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "SkyVult Trading",
+  "short_name": "SkyVult",
+  "description": "Binary options trading — forex, crypto & commodities in Ghana Cedis",
+  "start_url": "/trade",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0e14",
+  "theme_color": "#f7a600",
+  "icons": [
+    {
+      "src": "/SkyVult logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
