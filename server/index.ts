@@ -19,8 +19,10 @@ const SUPA_SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAdmin = createClient(SUPA_URL, SUPA_SERVICE, {
   auth: { autoRefreshToken: false, persistSession: false },
   // Node.js < 22 has no native WebSocket — supply the ws package so Supabase
-  // realtime doesn't throw on startup.
-  realtime: { transport: WebSocket },
+  // realtime doesn't throw on startup. Cast: ws's WebSocket is runtime-compatible
+  // with Supabase's WebSocketLikeConstructor but the types don't line up.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  realtime: { transport: WebSocket as any },
 });
 
 type Client = { ws: WebSocket; userId: string | null };
