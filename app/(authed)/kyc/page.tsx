@@ -132,7 +132,7 @@ export default function KycPage() {
           {submission && (
             <div className="bg-panel2 rounded-lg px-4 py-3 text-left text-xs text-muted space-y-1">
               <p><span className="text-white font-medium">Name:</span> {submission.fullName}</p>
-              <p><span className="text-white font-medium">ID:</span> {submission.idType.replace(/_/g, " ")} · {submission.idNumber}</p>
+              <p><span className="text-white font-medium">ID:</span> {submission.idType?.replace(/_/g, " ") ?? "—"} · {submission.idNumber ?? "—"}</p>
             </div>
           )}
         </div>

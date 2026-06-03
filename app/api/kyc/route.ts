@@ -25,9 +25,23 @@ export async function GET(req: NextRequest) {
       .limit(1)
       .single();
 
+    // Map snake_case DB columns to the camelCase shape the client expects.
+    // Without this, fields like `idType` come back undefined and crash the
+    // page (`submission.idType.replace(...)`).
     return ok({
       kycStatus: profile?.kyc_status ?? "NONE",
-      submission: submission ?? null,
+      submission: submission
+        ? {
+            id:              submission.id,
+            status:          submission.status,
+            fullName:        submission.full_name,
+            idType:          submission.id_type,
+            idNumber:        submission.id_number,
+            dateOfBirth:     submission.date_of_birth,
+            rejectionReason: submission.rejection_reason,
+            submittedAt:     submission.submitted_at,
+          }
+        : null,
     });
   } catch (e) {
     return handleError(e);
