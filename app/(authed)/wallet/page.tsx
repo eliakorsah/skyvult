@@ -251,7 +251,7 @@ export default function WalletPage() {
 // ─── Deposit card ──────────────────────────────────────────────────────
 
 function DepositCard({ onResolved }: { onResolved: () => void }) {
-  const [amount, setAmount] = useState(80);
+  const [amount, setAmount] = useState(2);
   const [phone, setPhone] = useState("");
   const [provider, setProvider] = useState<ProviderCode>("MTN");
   const [busy, setBusy] = useState(false);
@@ -335,7 +335,7 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
     <div className="card p-4 md:p-6">
       <div className="flex items-center justify-between">
         <div className="font-semibold">Deposit via MoMo</div>
-        <span className="text-[10px] uppercase tracking-wider text-muted">Min ₵80</span>
+        <span className="text-[10px] uppercase tracking-wider text-muted">Min ₵2</span>
       </div>
       <p className="text-muted text-xs mt-1">Add real cedis to your balance via Mobile Money.</p>
 
@@ -343,7 +343,7 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Amount (GHS)</div>
           <input
-            type="number" min={80} max={50000} step={1}
+            type="number" min={2} max={50000} step={1}
             value={amount}
             onChange={(e) => setAmount(Number(e.target.value || 0))}
             className="input font-mono"
