@@ -227,3 +227,5 @@ Not implemented. The wallet deposit button credits the real balance directly. To
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST token |
 | `NEXT_PUBLIC_WS_URL` | WebSocket server URL seen by browser |
 | `PORT` | WS server port (default 3001) |
+#   s k y v u l t  
+ 
