@@ -7,7 +7,9 @@ import { scheduleLocalSettlement, tradeResultEmitter, checkPriceTouch } from "./
 import { pollSettlementQueue } from "../lib/queue";
 import { ASSETS } from "../lib/assets";
 
-const PORT = Number(process.env.PORT || 3001);
+// Dedicated WS_PORT so the WebSocket server never collides with Next.js,
+// which uses PORT (3000 in production). nginx proxies /ws to this port.
+const PORT = Number(process.env.WS_PORT || 3001);
 const INTERNAL_PORT = Number(process.env.WS_INTERNAL_PORT || 3002);
 const INTERNAL_TOKEN = process.env.WS_INTERNAL_TOKEN || "";
 if (!INTERNAL_TOKEN) console.warn("[SECURITY] WS_INTERNAL_TOKEN is not set — internal price endpoint will reject all requests. Set it in .env.local.");
@@ -16,6 +18,9 @@ const SUPA_SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const supabaseAdmin = createClient(SUPA_URL, SUPA_SERVICE, {
   auth: { autoRefreshToken: false, persistSession: false },
+  // Node.js < 22 has no native WebSocket — supply the ws package so Supabase
+  // realtime doesn't throw on startup.
+  realtime: { transport: WebSocket },
 });
 
 type Client = { ws: WebSocket; userId: string | null };
