@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
+import { normalizeGhanaPhone, guessProviderFromPhone } from "@/lib/korapay";
 
 export const runtime = "nodejs";
 
@@ -25,9 +26,6 @@ export async function GET(req: NextRequest) {
       .limit(1)
       .single();
 
-    // Map snake_case DB columns to the camelCase shape the client expects.
-    // Without this, fields like `idType` come back undefined and crash the
-    // page (`submission.idType.replace(...)`).
     return ok({
       kycStatus: profile?.kyc_status ?? "NONE",
       submission: submission
@@ -49,15 +47,9 @@ export async function GET(req: NextRequest) {
 }
 
 const SubmitSchema = z.object({
-  fullName:       z.string().min(2).max(120),
-  dateOfBirth:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format"),
-  idType:         z.enum(["GHANA_CARD", "PASSPORT", "DRIVERS_LICENSE"]),
-  idNumber:       z.string().min(4).max(50),
-  mobileNumber:   z.string().min(9).max(20),
-  mobileProvider: z.enum(["MTN", "TELECEL", "AIRTELTIGO"]),
-  frontPath:      z.string().min(1),
-  backPath:       z.string().optional(),
-  selfiePath:     z.string().optional(),
+  accountName:  z.string().min(2).max(120),
+  mobileNumber: z.string().min(9).max(20),
+  frontPath:    z.string().min(1),
 });
 
 export async function POST(req: NextRequest) {
@@ -65,7 +57,11 @@ export async function POST(req: NextRequest) {
     const user = await requireUser(req);
     const body = SubmitSchema.parse(await req.json());
 
-    // Block re-submission if already PENDING or APPROVED
+    const phone = normalizeGhanaPhone(body.mobileNumber);
+    if (!phone) return fail(400, "Please enter a valid Ghana phone number.");
+    const provider = guessProviderFromPhone(phone);
+    if (!provider) return fail(400, "We couldn't recognise that number's network. Please check it and try again.");
+
     const { data: existing } = await supabaseAdmin
       .from("kyc_submissions")
       .select("id, status")
@@ -76,17 +72,16 @@ export async function POST(req: NextRequest) {
     if (existing?.status === "APPROVED") return fail(400, "Your identity is already verified.");
     if (existing?.status === "PENDING")  return fail(400, "Your submission is already under review.");
 
+    const accountName = body.accountName.trim();
+
     const { error } = await supabaseAdmin.from("kyc_submissions").insert({
       user_id:         user.id,
-      full_name:       body.fullName,
-      date_of_birth:   body.dateOfBirth,
-      id_type:         body.idType,
-      id_number:       body.idNumber,
-      mobile_number:   body.mobileNumber,
-      mobile_provider: body.mobileProvider,
+      full_name:       accountName,
+      id_type:         "GHANA_CARD",
       front_path:      body.frontPath,
-      back_path:       body.backPath ?? null,
-      selfie_path:     body.selfiePath ?? null,
+      mobile_number:   phone,
+      mobile_provider: provider,
+      mobile_name:     accountName,
     });
 
     if (error) {

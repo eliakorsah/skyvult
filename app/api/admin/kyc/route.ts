@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
     const { data: rows } = await supabaseAdmin
       .from("kyc_submissions")
-      .select("id, status, user_id, full_name, date_of_birth, id_type, id_number, front_path, back_path, selfie_path, rejection_reason, submitted_at, resolved_at")
+      .select("id, status, user_id, full_name, date_of_birth, id_type, id_number, mobile_name, mobile_number, mobile_provider, front_path, back_path, selfie_path, rejection_reason, submitted_at, resolved_at")
       .eq("status", filter)
       .order("submitted_at", { ascending: true })
       .limit(50);
@@ -52,6 +52,9 @@ export async function GET(req: NextRequest) {
           dateOfBirth:     r.date_of_birth,
           idType:          r.id_type,
           idNumber:        r.id_number,
+          mobileName:      r.mobile_name,
+          mobileNumber:    r.mobile_number,
+          mobileProvider:  r.mobile_provider,
           rejectionReason: r.rejection_reason,
           submittedAt:     r.submitted_at,
           resolvedAt:      r.resolved_at,

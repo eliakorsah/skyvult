@@ -1,40 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { verifyWebhookSignature } from "@/lib/paystack";
+import { verifyWebhookSignature } from "@/lib/korapay";
 import { withLock } from "@/lib/mutex";
-import { maybePayReferralBonus } from "@/lib/referral";
+import { creditDepositWallet, failDeposit } from "@/lib/depositCredit";
 
 export const runtime = "nodejs";
-// Webhook signature is HMAC-SHA512 over the raw bytes — Next caching would
-// alter the body. Always run fresh.
+// Webhook signature depends on the exact payload — Next caching would alter
+// the body. Always run fresh.
 export const dynamic = "force-dynamic";
 
-/** Paystack webhook receiver. Verifies the signature against the RAW body,
- *  then resolves the matching `payments` row idempotently. Idempotent
- *  because Paystack retries on any non-2xx response.
+/** Korapay webhook receiver. Korapay signs the JSON-stringified `data` object
+ *  (HMAC-SHA256) in the `x-korapay-signature` header. We parse the body,
+ *  verify the signature over `data`, then resolve the matching `payments` row
+ *  idempotently (Korapay retries on any non-2xx response).
  *
  *  Events we care about:
  *    - charge.success      → DEPOSIT succeeded; credit the wallet.
  *    - charge.failed       → DEPOSIT failed; mark FAILED (no wallet impact).
- *    - transfer.success    → WITHDRAWAL completed; mark SUCCESS.
- *    - transfer.failed     → WITHDRAWAL failed; REFUND the user (we
- *                            already debited optimistically).
- *    - transfer.reversed   → WITHDRAWAL reversed by Paystack later (rare
- *                            but real); also REFUND. */
+ *    - transfer.success    → WITHDRAWAL completed; mark SUCCESS (only fires
+ *                            if you later auto-disburse; manual flow ignores).
+ *    - transfer.failed     → WITHDRAWAL failed; REFUND the user. */
 export async function POST(req: NextRequest) {
   try {
-    // Critical: signature is over the RAW body. text() preserves the exact
-    // bytes Paystack signed. Parsing then re-stringifying would break the
-    // hash by re-ordering JSON keys.
     const raw = await req.text();
-    const sig = req.headers.get("x-paystack-signature");
-    if (!verifyWebhookSignature(raw, sig)) {
-      // Always return 200 even on bad signature so a probing attacker
-      // gets no extra signal about which payloads were valid. We log it
-      // for audit but don't act on the body.
-      console.warn("[paystack-webhook] bad signature; ignoring");
-      return NextResponse.json({ ok: true });
-    }
 
     let payload: any;
     try { payload = JSON.parse(raw); } catch {
@@ -43,6 +31,15 @@ export async function POST(req: NextRequest) {
 
     const event: string = payload?.event ?? "";
     const data:  any    = payload?.data  ?? {};
+
+    // Korapay signs the `data` object only (not the whole body), HMAC-SHA256.
+    const sig = req.headers.get("x-korapay-signature");
+    if (!verifyWebhookSignature(data, sig)) {
+      // Always return 200 even on bad signature so a probing attacker gets no
+      // extra signal about which payloads were valid. Log for audit only.
+      console.warn("[korapay-webhook] bad signature; ignoring");
+      return NextResponse.json({ ok: true });
+    }
 
     if (event === "charge.success" || event === "charge.failed") {
       await handleChargeResult(event, data);
@@ -55,9 +52,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error("[paystack-webhook] handler crashed:", err?.message);
-    // Returning 200 prevents Paystack's retry storm even when we hit a
-    // transient error. The next event of the same kind will resolve it.
+    console.error("[korapay-webhook] handler crashed:", err?.message);
+    // Returning 200 prevents a retry storm even when we hit a transient
+    // error. The next event of the same kind will resolve it.
     return NextResponse.json({ ok: true });
   }
 }
@@ -76,74 +73,22 @@ async function handleChargeResult(event: string, data: any): Promise<void> {
     .eq("provider_reference", reference)
     .single();
   if (!pay) {
-    console.warn("[paystack-webhook] charge for unknown reference:", reference);
+    console.warn("[korapay-webhook] charge for unknown reference:", reference);
     return;
   }
   if (pay.status !== "PENDING") return; // already resolved
 
   if (event === "charge.failed") {
-    await supabaseAdmin
-      .from("payments")
-      .update({
-        status: "FAILED",
-        failure_reason: data?.gateway_response?.slice(0, 200) ?? "Provider declined",
-        resolved_at: new Date().toISOString(),
-      })
-      .eq("id", pay.id)
-      .eq("status", "PENDING");
+    await failDeposit(pay, data?.gateway_response ?? "Provider declined");
     return;
   }
 
   // event === "charge.success" → credit the wallet.
-  // Paystack returns amount in pesewas; trust it over our originally-
-  // requested amount in case Paystack adjusted (rare for MoMo, common for
-  // card payments with currency conversion).
-  const cedis = Number(data?.amount) / 100;
-  if (!isFinite(cedis) || cedis <= 0) return;
-
-  await withLock(`wallet:${pay.user_id}`, async () => {
-    // Optimistic-concurrency credit with retry — same pattern as the
-    // settlement worker. Closes the race against the trade API also
-    // mutating this user's wallet at the same instant.
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const { data: wallet } = await supabaseAdmin
-        .from("wallets")
-        .select("balance")
-        .eq("user_id", pay.user_id)
-        .single();
-      if (!wallet) return;
-      const before = Number(wallet.balance);
-      const after  = before + cedis;
-      const { data: upd } = await supabaseAdmin
-        .from("wallets")
-        .update({ balance: after })
-        .eq("user_id", pay.user_id)
-        .eq("balance", before)
-        .select("user_id");
-      if (upd && upd.length > 0) {
-        await supabaseAdmin.from("transactions").insert({
-          user_id: pay.user_id,
-          type:    "DEPOSIT",
-          amount:  cedis,
-          balance_before: before,
-          balance_after:  after,
-          reference: reference,
-          is_demo: false,
-        });
-        // Mark the payments row resolved AFTER the credit lands.
-        await supabaseAdmin
-          .from("payments")
-          .update({ status: "SUCCESS", resolved_at: new Date().toISOString() })
-          .eq("id", pay.id)
-          .eq("status", "PENDING");
-        // Referral bonus check — fires only on the first qualifying deposit
-        // for a user who has referred_by set. Idempotent + non-fatal.
-        await maybePayReferralBonus(pay.user_id, cedis);
-        return;
-      }
-    }
-    console.error("[paystack-webhook] deposit credit failed after retries", reference);
-  });
+  // Korapay returns amount in MAJOR units (cedis) — no ÷100. Trust the
+  // provider amount over our originally-requested amount. Fall back to the
+  // amount we recorded on the payments row if the webhook omits it.
+  const cedis = Number(data?.amount ?? pay.amount);
+  await creditDepositWallet(pay, cedis);
 }
 
 // ─── Withdrawal (transfer) resolution ───────────────────────────────────
@@ -216,6 +161,6 @@ async function handleTransferResult(data: any, outcome: "SUCCESS" | "FAILED"): P
         return;
       }
     }
-    console.error("[paystack-webhook] withdrawal refund failed after retries", reference);
+    console.error("[korapay-webhook] withdrawal refund failed after retries", reference);
   });
 }

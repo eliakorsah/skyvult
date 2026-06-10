@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
 import { checkLimit } from "@/lib/ratelimit";
 import { provisionUser } from "@/lib/provision";
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     const rl = await checkLimit(req, "oauth-init", 10, 3600);
     if (!rl.success) return fail(429, "Too many attempts. Try again later.");
 
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(body.accessToken);
+    const { data: { user }, error } = await supabase.auth.getUser(body.accessToken);
     if (error || !user || !user.email) return fail(401, "Invalid session");
 
     // Derive a display name from OAuth metadata, falling back to the email handle.

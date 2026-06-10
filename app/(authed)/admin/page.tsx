@@ -102,15 +102,28 @@ type KycSubmission = {
   id: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
   fullName: string;
-  dateOfBirth: string;
+  dateOfBirth: string | null;
   idType: string;
-  idNumber: string;
+  idNumber: string | null;
+  mobileNumber: string | null;
+  mobileProvider: string | null;
   rejectionReason: string | null;
   submittedAt: string;
   user: { id: string; name: string; email: string } | null;
   frontUrl: string | null;
   backUrl:  string | null;
   selfieUrl: string | null;
+};
+
+type SupportMessage = {
+  id: string;
+  userId: string;
+  email: string | null;
+  name: string | null;
+  body: string;
+  status: "OPEN" | "READ" | "RESOLVED";
+  createdAt: string;
+  resolvedAt: string | null;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -166,6 +179,8 @@ const STATUS_PILL: Record<string, string> = {
   BLOCKED:   "bg-down/10 text-down border-down/25",
   PENDING:   "bg-accent/10 text-accent border-accent/25",
   OPEN:      "bg-accent/10 text-accent border-accent/25",
+  READ:      "bg-muted/10 text-muted border-muted/25",
+  RESOLVED:  "bg-up/10 text-up border-up/25",
   ABANDONED: "bg-muted/10 text-muted border-muted/25",
 };
 
@@ -364,6 +379,7 @@ export default function AdminPage() {
   const [payments, setPayments] = useState<AdminPayment[]>([]);
   const [paySum,   setPaySum]   = useState<PaymentSummary | null>(null);
   const [kyc,      setKyc]      = useState<KycSubmission[]>([]);
+  const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [error,    setError]    = useState<string | null>(null);
   const [authorized, setAuthorized] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
@@ -379,12 +395,13 @@ export default function AdminPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const [s, t, u, p, k] = await Promise.all([
+      const [s, t, u, p, k, m] = await Promise.all([
         api<Stats>("/api/admin/stats"),
         api<{ trades: AdminTrade[] }>("/api/admin/trades?limit=20"),
         api<{ users: AdminUser[] }>("/api/admin/users"),
         api<{ payments: AdminPayment[]; summary: PaymentSummary }>("/api/admin/payments?limit=100"),
         api<{ submissions: KycSubmission[] }>("/api/admin/kyc?status=PENDING"),
+        api<{ messages: SupportMessage[] }>("/api/admin/messages"),
       ]);
       setStats(s);
       setTrades(t.trades);
@@ -392,6 +409,7 @@ export default function AdminPage() {
       setPayments(p.payments);
       setPaySum(p.summary);
       setKyc(k.submissions);
+      setMessages(m.messages);
       setLastRefresh(Date.now());
       setError(null);
     } catch (e: any) { setError(e.message); }
@@ -422,6 +440,11 @@ export default function AdminPage() {
     const reason = action === "reject" ? prompt("Rejection reason (shown to user):") : undefined;
     if (action === "reject" && reason === null) return; // cancelled
     await api(`/api/admin/kyc/${id}`, { method: "PATCH", body: JSON.stringify({ action, reason: reason ?? undefined }) });
+    refresh();
+  }
+
+  async function messageAction(id: string, action: "read" | "resolve" | "reopen") {
+    await api(`/api/admin/messages/${id}`, { method: "PATCH", body: JSON.stringify({ action }) });
     refresh();
   }
 
@@ -590,17 +613,16 @@ export default function AdminPage() {
                       <p className="text-xs text-muted">{k.user?.email ?? "—"} · {k.user?.name ?? "—"}</p>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
                         <span className="text-xs">
-                          <span className="text-muted">ID Type: </span>
-                          <span className="font-semibold">{k.idType.replace(/_/g, " ")}</span>
+                          <span className="text-muted">MoMo: </span>
+                          <span className="font-mono font-semibold">{k.mobileNumber ?? "—"}</span>
+                          {k.mobileProvider && <span className="text-muted"> ({k.mobileProvider})</span>}
                         </span>
-                        <span className="text-xs">
-                          <span className="text-muted">ID No: </span>
-                          <span className="font-mono font-semibold">{k.idNumber}</span>
-                        </span>
-                        <span className="text-xs">
-                          <span className="text-muted">DOB: </span>
-                          <span className="font-semibold">{k.dateOfBirth}</span>
-                        </span>
+                        {k.idNumber && (
+                          <span className="text-xs">
+                            <span className="text-muted">ID No: </span>
+                            <span className="font-mono font-semibold">{k.idNumber}</span>
+                          </span>
+                        )}
                         <span className="text-xs text-muted">{ago(k.submittedAt)}</span>
                       </div>
                     </div>
@@ -657,6 +679,53 @@ export default function AdminPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        {/* ── Messages ── */}
+        <Section title="Messages" count={messages.filter((m) => m.status !== "RESOLVED").length}>
+          {messages.length === 0 ? (
+            <p className="text-muted text-sm py-4">No messages.</p>
+          ) : (
+            <div className="flex flex-col gap-3 max-h-[500px] overflow-y-auto pr-1">
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`card p-4 border ${m.status === "OPEN" ? "border-accent/40 bg-accent/[0.03]" : "border-border"}`}
+                >
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">{m.name ?? "Unknown"}</span>
+                        <Badge label={m.status} />
+                        <span className="text-[11px] text-muted">{ago(m.createdAt)}</span>
+                      </div>
+                      <p className="text-xs text-muted">{m.email ?? "—"}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {m.status === "OPEN" && (
+                        <button
+                          onClick={() => messageAction(m.id, "read")}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-panel2 border border-border text-muted hover:text-white transition-colors"
+                        >Mark read</button>
+                      )}
+                      {m.status !== "RESOLVED" ? (
+                        <button
+                          onClick={() => messageAction(m.id, "resolve")}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-up/15 text-up border border-up/30 hover:bg-up/25 transition-colors"
+                        >✓ Resolve</button>
+                      ) : (
+                        <button
+                          onClick={() => messageAction(m.id, "reopen")}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-panel2 border border-border text-muted hover:text-white transition-colors"
+                        >Reopen</button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm mt-2.5 whitespace-pre-wrap break-words">{m.body}</p>
                 </div>
               ))}
             </div>

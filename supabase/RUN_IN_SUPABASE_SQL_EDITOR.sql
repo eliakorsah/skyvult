@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS payments (
   amount             numeric(12,2) NOT NULL CHECK (amount > 0),
   status             text NOT NULL DEFAULT 'PENDING'
                        CHECK (status IN ('PENDING','SUCCESS','FAILED','ABANDONED')),
-  provider           text NOT NULL DEFAULT 'paystack',
+  provider           text NOT NULL DEFAULT 'korapay',
   provider_reference text UNIQUE,
   mobile_provider    text,
   mobile_number      text,
@@ -98,6 +98,36 @@ ALTER TABLE profiles
 -- ── 007: Free bonus flag ─────────────────────────────────────
 ALTER TABLE profiles
   ADD COLUMN IF NOT EXISTS free_bonus_claimed boolean NOT NULL DEFAULT false;
+
+-- ── 008: KYC = phone number + Ghana Card photo only ──────────
+-- No longer collecting the Ghana Card number or DOB at submission time.
+ALTER TABLE kyc_submissions
+  ALTER COLUMN id_number     DROP NOT NULL,
+  ALTER COLUMN date_of_birth DROP NOT NULL,
+  ALTER COLUMN id_type       SET DEFAULT 'GHANA_CARD';
+
+ALTER TABLE kyc_submissions
+  ADD COLUMN IF NOT EXISTS mobile_name text;
+
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS verified_mobile_name text;
+
+-- ── 009: User → admin support messages ───────────────────────
+CREATE TABLE IF NOT EXISTS support_messages (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES profiles(id),
+  email       text,
+  name        text,
+  body        text NOT NULL,
+  status      text NOT NULL DEFAULT 'OPEN'
+                CHECK (status IN ('OPEN', 'READ', 'RESOLVED')),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS support_messages_status_idx
+  ON support_messages (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS support_messages_user_idx
+  ON support_messages (user_id, created_at DESC);
 
 -- ============================================================
 -- Done. The kyc-docs storage bucket is auto-created by the

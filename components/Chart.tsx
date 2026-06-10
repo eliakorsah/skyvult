@@ -36,6 +36,26 @@ const TIMEFRAMES = [
   { label: "5m",  s: 300 },
 ];
 
+export type ChartType = "candles" | "line" | "area";
+
+const CHART_TYPES: { type: ChartType; label: string; icon: string }[] = [
+  { type: "candles", label: "Candles", icon: "▥" },
+  { type: "line",    label: "Line",    icon: "〰" },
+  { type: "area",    label: "Area",    icon: "◣" },
+];
+
+// Line/Area series carry a single value per point; candles carry OHLC.
+// These adapters let the rest of the chart logic keep working in OHLC terms
+// (we always track the in-progress candle) and convert at the series boundary.
+type LinePoint = { time: UTCTimestamp; value: number };
+function toSeriesData(data: CandlestickData[], type: ChartType): CandlestickData[] | LinePoint[] {
+  if (type === "candles") return data;
+  return data.map((c) => ({ time: c.time as UTCTimestamp, value: c.close }));
+}
+function toSeriesPoint(c: CandlestickData, type: ChartType): CandlestickData | LinePoint {
+  return type === "candles" ? c : { time: c.time as UTCTimestamp, value: c.close };
+}
+
 const SAVE_DEBOUNCE_MS = 1500;
 // Bumping the version invalidates any sessionStorage cache from earlier
 // (buggy) builds. Increment whenever the price model or candle shape changes.
@@ -45,12 +65,12 @@ const cacheKey = (asset: string, tf: number) => `skyvult:chart:${CACHE_VERSION}:
 // Sanity-check expected price range per asset so a stale cache from a
 // drifted earlier run can't poison the chart. Matches the server's CLAMP_PCT.
 const ASSET_BASE: Record<string, number> = {
-  "EUR/USD": 1.085,
-  "GBP/USD": 1.272,
-  "BTC/USD": 67420,
-  "ETH/USD": 3540,
-  "GOLD":    2341,
-  "OIL":     78.4,
+  "SVX Prime":    1.085,
+  "SVX Alpha":    1.272,
+  "SVX Titan":    67420,
+  "SVX Quantum":  3540,
+  "SVX Velocity": 2341,
+  "SVX Nova":     78.4,
 };
 function isCacheSane(asset: string, candles: CandlestickData[]): boolean {
   const base = ASSET_BASE[asset];
@@ -192,7 +212,7 @@ export default function Chart({
   const [historyCandles, setHistoryCandles] = useState<Candle[]>([]);
   const containerRef    = useRef<HTMLDivElement>(null);
   const chartRef        = useRef<IChartApi | null>(null);
-  const seriesRef       = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const seriesRef       = useRef<ISeriesApi<"Candlestick" | "Line" | "Area"> | null>(null);
 
   const liveCandle      = useRef<CandlestickData | null>(null);
   const lastTsRef       = useRef<number>(0);
@@ -209,6 +229,11 @@ export default function Chart({
   const tradeLinesRef = useRef<Map<string, TradeLines>>(new Map());
 
   const [tf, setTf] = useState(5);
+  const [chartType, setChartType] = useState<ChartType>("candles");
+  const chartTypeRef = useRef<ChartType>("candles");
+  // Bumped whenever the series is recreated (chart-type switch) so the
+  // seeding and trade-line effects re-run against the new series instance.
+  const [seriesEpoch, setSeriesEpoch] = useState(0);
 
   // Fetch history from Supabase whenever the asset changes. Refresh every
   // 60s so the chart stays in sync if the WS misses ticks. Live ticks paint
@@ -236,7 +261,11 @@ export default function Chart({
     };
     fetchHistory();
     const refresh = setInterval(fetchHistory, 60_000);
-    return () => { alive = false; clearInterval(refresh); };
+    // Re-fetch immediately when the tab becomes visible so lines are restored
+    // without waiting up to 60s for the next scheduled tick.
+    const onVisible = () => { if (document.visibilityState === "visible") fetchHistory(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { alive = false; clearInterval(refresh); document.removeEventListener("visibilitychange", onVisible); };
   }, [asset]);
 
   function debouncedSave(asset: string, tf: number, data: CandlestickData[]) {
@@ -283,6 +312,9 @@ export default function Chart({
         // Tight margins so even small price moves take up real vertical space
         scaleMargins: { top: 0.05, bottom: 0.05 },
         entireTextOnly: true,
+        // Starts auto-scaled; dragging up/down on the price axis switches this
+        // off and lets the user set the vertical scale manually. Double-tapping
+        // the price axis resets it back to auto.
         autoScale: true,
       },
       leftPriceScale: { visible: false },
@@ -302,38 +334,27 @@ export default function Chart({
         horzLine: { color: "#3d4a5c", width: 1, style: 3, labelBackgroundColor: "#1f2630" },
       },
       autoSize: true,
-      // Lock vertical interactions: chart is always centered, autoscale
-      // handles the price range. Only horizontal panning (through time) is
-      // allowed — both on touch and via mouse drag on the chart body.
+      // Panning the chart body stays horizontal-only (so a vertical swipe to
+      // scroll the page isn't hijacked). Vertical scaling is done by dragging
+      // up/down ON the price axis — see handleScale.axisPressedMouseMove.price.
       handleScroll: {
         mouseWheel: true,         // wheel scrolls time horizontally
         pressedMouseMove: true,   // click+drag pans time
         horzTouchDrag: true,      // mobile: horizontal swipe pans time
-        vertTouchDrag: false,     // mobile: vertical swipe does NOT pan
+        vertTouchDrag: false,     // mobile: vertical swipe does NOT pan the body
       },
       handleScale: {
-        axisPressedMouseMove: { time: true, price: false }, // no price-axis drag
+        // price: drag up/down on the price axis to stretch/compress the
+        // vertical scale (adjusts how tall the candles/line appear). Works with
+        // mouse drag and touch-drag on the axis. Double-tap the axis to reset.
+        axisPressedMouseMove: { time: true, price: true },
+        axisDoubleClickReset: { time: true, price: true },
         mouseWheel: true,
         pinch: true,
       },
     });
 
-    const series = chart.addCandlestickSeries({
-      upColor:         "#26a69a",
-      downColor:       "#ef5350",
-      borderUpColor:   "#26a69a",
-      borderDownColor: "#ef5350",
-      wickUpColor:     "#26a69a",
-      wickDownColor:   "#ef5350",
-      priceLineVisible: true,
-      priceLineWidth:   1,
-      priceLineColor:   "#f7a600",
-      priceLineStyle:   2,
-      lastValueVisible: true,
-    });
-
     chartRef.current  = chart;
-    seriesRef.current = series;
 
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       if (programmaticRef.current) return;
@@ -347,6 +368,64 @@ export default function Chart({
       seriesRef.current = null;
     };
   }, []);
+
+  // ── (re)create the series whenever the chart type changes ────────────────
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    // Tear down the previous series (and any trade lines that lived on it).
+    if (seriesRef.current) {
+      try { chart.removeSeries(seriesRef.current); } catch {}
+      seriesRef.current = null;
+      tradeLinesRef.current.clear();
+    }
+
+    let series: ISeriesApi<"Candlestick" | "Line" | "Area">;
+    if (chartType === "line") {
+      series = chart.addLineSeries({
+        color: "#f7a600",
+        lineWidth: 2,
+        priceLineVisible: true,
+        priceLineWidth:   1,
+        priceLineColor:   "#f7a600",
+        priceLineStyle:   2,
+        lastValueVisible: true,
+      });
+    } else if (chartType === "area") {
+      series = chart.addAreaSeries({
+        lineColor:   "#f7a600",
+        topColor:    "rgba(247,166,0,0.35)",
+        bottomColor: "rgba(247,166,0,0.02)",
+        lineWidth: 2,
+        priceLineVisible: true,
+        priceLineWidth:   1,
+        priceLineColor:   "#f7a600",
+        priceLineStyle:   2,
+        lastValueVisible: true,
+      });
+    } else {
+      series = chart.addCandlestickSeries({
+        upColor:         "#26a69a",
+        downColor:       "#ef5350",
+        borderUpColor:   "#26a69a",
+        borderDownColor: "#ef5350",
+        wickUpColor:     "#26a69a",
+        wickDownColor:   "#ef5350",
+        priceLineVisible: true,
+        priceLineWidth:   1,
+        priceLineColor:   "#f7a600",
+        priceLineStyle:   2,
+        lastValueVisible: true,
+      });
+    }
+
+    seriesRef.current  = series;
+    chartTypeRef.current = chartType;
+    // Force the seeding + trade-line effects to repopulate the new series.
+    seededFromHistoryRef.current = "";
+    setSeriesEpoch((e) => e + 1);
+  }, [chartType]);
 
   // ── seed from history + cache when asset/TF changes or history arrives ───
   useEffect(() => {
@@ -371,7 +450,7 @@ export default function Chart({
     data = bridgeWithTicks(data, ticks, tf);
 
     programmaticRef.current = true;
-    seriesRef.current.setData(data);
+    seriesRef.current.setData(toSeriesData(data, chartType) as any);
     liveCandle.current = data[data.length - 1] ?? null;
     // Set lastTsRef so live ticks beyond historical data trigger incremental updates
     const lastCandleTimeMs = data.length > 0 ? (data[data.length - 1].time as number) * 1000 : 0;
@@ -382,7 +461,7 @@ export default function Chart({
     if (data.length > 0) debouncedSave(asset, tf, data);
 
     seededFromHistoryRef.current = `${asset}:${tf}:${historyCandles.length}`;
-  }, [asset, tf, historyCandles]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [asset, tf, historyCandles, seriesEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply one tick to the in-progress candle. Exposed via useImperativeHandle
   // so the parent can call this directly from the WS message handler, bypassing
@@ -413,7 +492,7 @@ export default function Chart({
             low:   prevForFill.close,
             close: prevForFill.close,
           };
-          try { seriesRef.current.update(fill); } catch { /* out-of-order, skip */ }
+          try { seriesRef.current.update(toSeriesPoint(fill, chartTypeRef.current) as any); } catch { /* out-of-order, skip */ }
         }
       }
     }
@@ -434,7 +513,7 @@ export default function Chart({
     }
 
     try {
-      seriesRef.current.update(updated);
+      seriesRef.current.update(toSeriesPoint(updated, chartTypeRef.current) as any);
     } catch {
       // Out-of-order time — next history snapshot will repair it.
       return;
@@ -538,7 +617,7 @@ export default function Chart({
     // 1s ticker keeps the countdown label fresh
     const i = setInterval(render, 1000);
     return () => clearInterval(i);
-  }, [openTrades, asset]);
+  }, [openTrades, asset, seriesEpoch]);
 
   // TP/SL lines are only shown after the trade is committed — see the
   // open-trades effect above which creates them per-trade with solid styling.
@@ -547,7 +626,7 @@ export default function Chart({
 
   return (
     <div className="w-full h-full flex flex-col">
-      {/* Timeframe bar — sits above the chart so candles are never obscured */}
+      {/* Timeframe + chart-type bar — sits above the chart so it's never obscured */}
       <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 border-b border-[#1f2630] bg-bg/80 backdrop-blur-sm">
         {TIMEFRAMES.map((t) => (
           <button
@@ -562,6 +641,26 @@ export default function Chart({
             {t.label}
           </button>
         ))}
+
+        {/* Chart-type switcher, pushed to the right */}
+        <div className="ml-auto flex items-center gap-1">
+          {CHART_TYPES.map((c) => (
+            <button
+              key={c.type}
+              onClick={() => setChartType(c.type)}
+              title={c.label}
+              aria-label={c.label}
+              aria-pressed={chartType === c.type}
+              className={`text-[12px] leading-none w-7 h-7 flex items-center justify-center rounded font-semibold transition-colors touch-manipulation select-none ${
+                chartType === c.type
+                  ? "bg-accent text-black"
+                  : "bg-[#161b24] text-[#6b7280] hover:text-white border border-[#1f2630]"
+              }`}
+            >
+              {c.icon}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Chart fills remaining height */}

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
 import { checkLimit } from "@/lib/ratelimit";
 import { provisionUser } from "@/lib/provision";
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       return fail(400, e?.message ?? "Could not create account");
     }
 
-    const { data: session, error: signInErr } = await supabaseAdmin.auth.signInWithPassword({
+    const { data: session, error: signInErr } = await supabase.auth.signInWithPassword({
       email: body.email,
       password: body.password,
     });

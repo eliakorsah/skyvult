@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       type:               "WITHDRAWAL",
       amount:             body.amount,
       status:             "PENDING",
-      provider:           "paystack",
+      provider:           "korapay",
       provider_reference: reference,
       mobile_provider:    profile.verified_mobile_provider,
       mobile_number:      profile.verified_mobile_number,

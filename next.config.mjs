@@ -44,7 +44,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: blob: https://*.supabase.co",
-              "connect-src 'self' ws: wss: https://*.supabase.co https://api.paystack.co https://fonts.googleapis.com",
+              "connect-src 'self' ws: wss: https://*.supabase.co https://api.korapay.com https://api.mtn.com https://fonts.googleapis.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Allow: /auth
+
+# Keep authenticated routes out of search indexes
+Disallow: /trade
+Disallow: /wallet
+Disallow: /history
+Disallow: /kyc
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: https://skyvult.com/sitemap.xml

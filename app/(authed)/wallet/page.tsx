@@ -208,7 +208,7 @@ export default function WalletPage() {
         <DemoTopupCard current={balance.demo} onResolved={refresh} />
 
         {/* Deposit + Withdraw side-by-side on desktop, stacked on mobile */}
-        <div className="grid md:grid-cols-2 gap-3 mt-3">
+        <div id="deposit" className="grid md:grid-cols-2 gap-3 mt-3">
           <DepositCard onResolved={refresh} />
           <WithdrawCard available={balance.real} onResolved={refresh} />
         </div>

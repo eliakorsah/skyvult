@@ -24,7 +24,7 @@ const STEPS: Step[] = [
   {
     emoji: "📊",
     title: "Choose Your Asset",
-    body: "Scroll these tabs to pick what you want to trade — EUR/USD, Bitcoin, Gold, Oil and more. The live price next to each tab updates every tick.",
+    body: "Scroll these tabs to pick what you want to trade — SVX Prime, SVX Titan, SVX Velocity and more. The live price next to each tab updates every tick.",
     target: "assets",
     label: "Asset Tabs",
   },

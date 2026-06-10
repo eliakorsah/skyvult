@@ -70,7 +70,7 @@ export async function PATCH(
       return ok({ status: "rejected" });
     }
 
-    // approve: admin has manually sent the money via Paystack dashboard / MoMo.
+    // approve: admin has manually sent the money via Korapay dashboard / MoMo.
     // Mark SUCCESS so the payment is closed out.
     await supabaseAdmin.from("payments").update({
       status:      "SUCCESS",

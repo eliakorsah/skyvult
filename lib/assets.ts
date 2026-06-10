@@ -8,23 +8,30 @@ export function fmtGhs(n: number): string {
   return `${sign}₵${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** Full GHS amount, never abbreviated: ₵1,234,567.89. Use where the exact
+ *  balance matters (e.g. the nav balance); pair with responsive text sizing
+ *  so long values don't overflow on small screens. */
+export function fmtGhsFull(n: number): string {
+  return `₵${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export type AssetConfig = {
   symbol: string;
   price: number;
   volatility: number;
   decimals: number;
-  /** Win multiplier, e.g. 1.80 = 80% profit. EUR/USD gets the best rate
+  /** Win multiplier, e.g. 1.80 = 80% profit. SVX Prime gets the best rate
    *  (most liquid); crypto and commodities are lower due to volatility. */
   payoutRatio: number;
 };
 
 export const ASSET_CONFIGS: Record<string, AssetConfig> = {
-  "EUR/USD": { symbol: "EUR/USD", price: 1.085,  volatility: 0.00015, decimals: 5, payoutRatio: 1.80 },
-  "GBP/USD": { symbol: "GBP/USD", price: 1.272,  volatility: 0.00018, decimals: 5, payoutRatio: 1.79 },
-  "BTC/USD": { symbol: "BTC/USD", price: 67420,  volatility: 12.0,    decimals: 2, payoutRatio: 1.75 },
-  "ETH/USD": { symbol: "ETH/USD", price: 3540,   volatility: 4.5,     decimals: 2, payoutRatio: 1.73 },
-  "GOLD":    { symbol: "GOLD",    price: 2341,    volatility: 0.6,     decimals: 2, payoutRatio: 1.77 },
-  "OIL":     { symbol: "OIL",     price: 78.4,    volatility: 0.04,    decimals: 3, payoutRatio: 1.72 },
+  "SVX Prime":    { symbol: "SVX Prime",    price: 1.085,  volatility: 0.00015, decimals: 5, payoutRatio: 1.80 },
+  "SVX Alpha":    { symbol: "SVX Alpha",    price: 1.272,  volatility: 0.00018, decimals: 5, payoutRatio: 1.79 },
+  "SVX Titan":    { symbol: "SVX Titan",    price: 67420,  volatility: 12.0,    decimals: 2, payoutRatio: 1.75 },
+  "SVX Quantum":  { symbol: "SVX Quantum",  price: 3540,   volatility: 4.5,     decimals: 2, payoutRatio: 1.73 },
+  "SVX Velocity": { symbol: "SVX Velocity", price: 2341,   volatility: 0.6,     decimals: 2, payoutRatio: 1.77 },
+  "SVX Nova":     { symbol: "SVX Nova",     price: 78.4,   volatility: 0.04,    decimals: 3, payoutRatio: 1.72 },
 };
 
 export const ASSETS = Object.values(ASSET_CONFIGS);
@@ -35,7 +42,7 @@ export function isValidAsset(s: string) {
 
 // 1.80 → ~10% house edge with symmetric TP/SL (0.5 × 0.80 − 0.5 × 1 = −0.10).
 // Win pays back amount × 1.80 (= 80% profit on stake). This is the max rate
-// (EUR/USD). Other assets use lower rates defined in ASSET_CONFIGS.payoutRatio.
+// (SVX Prime). Other assets use lower rates defined in ASSET_CONFIGS.payoutRatio.
 export const PAYOUT_RATIO = 1.80;
 
 /** Returns the per-asset payout ratio, falling back to PAYOUT_RATIO (1.80). */

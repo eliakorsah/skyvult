@@ -30,10 +30,12 @@ export default function LandingPage() {
             className="object-cover object-top scale-110"
             priority
           />
-          {/* gradient: dark at bottom for text, dark at top to blend with nav */}
-          <div className="absolute inset-0 bg-gradient-to-b from-bg/70 via-bg/20 to-bg" />
+          {/* top blend into nav */}
+          <div className="absolute inset-0 bg-gradient-to-b from-bg/80 via-bg/30 to-transparent" />
+          {/* strong bottom scrim where the text sits — keeps copy readable */}
+          <div className="absolute inset-x-0 bottom-0 h-[70%] bg-gradient-to-t from-bg via-bg/90 to-transparent" />
           {/* side vignette */}
-          <div className="absolute inset-0 bg-gradient-to-r from-bg/60 via-transparent to-bg/60" />
+          <div className="absolute inset-0 bg-gradient-to-r from-bg/50 via-transparent to-bg/50" />
         </div>
 
         {/* Desktop: phone mockup on the right */}
@@ -51,17 +53,18 @@ export default function LandingPage() {
 
         {/* Text — overlays image on mobile, left column on desktop */}
         <div className="relative z-10 flex-1 px-5 pb-12 pt-0 lg:px-0 lg:pb-0 text-center lg:text-left">
-          <div className="inline-flex items-center gap-2 bg-panel/80 backdrop-blur-sm border border-border rounded-full px-3 py-1 text-xs text-muted mb-4">
-            <span className="w-1.5 h-1.5 rounded-full bg-up animate-pulse" />
-            Live trading • 6 assets • 80% payout
+          <div className="inline-flex items-center gap-2 bg-accent/15 backdrop-blur-sm border border-accent/30 rounded-full px-3 py-1 text-xs text-accent font-semibold mb-4">
+            <span>🎮</span>
+            Forex Trading Game • 6 markets • 80% payout
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.1] tracking-tight drop-shadow-lg">
-            Trade smarter.<br />
-            <span className="text-accent">Earn higher.</span>
+            Play the markets.<br />
+            <span className="text-accent">Win higher.</span>
           </h1>
-          <p className="text-muted mt-4 text-base sm:text-lg max-w-lg mx-auto lg:mx-0 drop-shadow">
-            Ghana's binary options platform. Trade forex, crypto and commodities in{" "}
-            <span className="text-white font-medium">Ghana Cedis</span>. Up to 80% profit per trade.
+          <p className="text-white/85 lg:text-muted mt-4 text-base sm:text-lg max-w-lg mx-auto lg:mx-0 drop-shadow-md">
+            A fast-paced <span className="text-white font-medium">forex trading game</span>. Predict UP or DOWN
+            on simulated forex, crypto and commodity markets in{" "}
+            <span className="text-white font-medium">Ghana Cedis</span> — win up to 80% per round.
           </p>
 
           {/* ₵10 minimum callout */}
@@ -120,7 +123,7 @@ export default function LandingPage() {
 
       {/* ── Feature Cards ───────────────────────────────────── */}
       <section className="max-w-7xl mx-auto w-full px-5 md:px-16 pb-12">
-        <h2 className="text-center text-xl sm:text-2xl md:text-3xl font-bold mb-6 md:mb-8">Why trade with SkyVult?</h2>
+        <h2 className="text-center text-xl sm:text-2xl md:text-3xl font-bold mb-6 md:mb-8">Why play SkyVult?</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <FeatureCard
             img="up.png"
@@ -130,7 +133,7 @@ export default function LandingPage() {
           <FeatureCard
             img="signal.png"
             title="Live Price Feed"
-            body="Real-time prices for EUR/USD, GBP/USD, BTC, ETH, Gold & Oil — updated every 800ms."
+            body="Real-time prices for SVX Prime, Alpha, Titan, Quantum, Velocity & Nova — updated every 800ms."
           />
           <FeatureCard
             img="cedis.png"
@@ -162,8 +165,11 @@ export default function LandingPage() {
         </Link>
       </section>
 
-      <footer className="border-t border-border py-6 text-center text-muted text-xs px-4">
-        SkyVult © {new Date().getFullYear()} · For educational &amp; demo purposes only
+      <footer className="border-t border-border py-6 text-center text-muted text-xs px-4 space-y-1">
+        <p>SkyVult © {new Date().getFullYear()} · A forex trading game</p>
+        <p className="text-muted/70">
+          SkyVult is a game of skill on simulated markets — not a licensed broker or investment service.
+        </p>
       </footer>
     </main>
   );

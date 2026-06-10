@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, clearTokens } from "@/lib/api";
-import { ASSET_CONFIGS, fmtGhs } from "@/lib/assets";
+import { ASSET_CONFIGS, fmtGhsFull } from "@/lib/assets";
 import { AnimatePresence, motion } from "framer-motion";
 
 type Me = {
@@ -25,6 +25,7 @@ const NAV_ICONS: Record<string, string> = {
   "/history": "🕐",
   "/wallet":  "💳",
   "/kyc":     "🪪",
+  "/support": "💬",
   "/admin":   "⚙️",
 };
 
@@ -150,6 +151,7 @@ export default function Nav({
     { href: "/history", label: "History" },
     { href: "/wallet",  label: "Wallet" },
     { href: "/kyc",     label: "Verify" },
+    { href: "/support", label: "Message Us" },
     ...(me?.role === "ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
   ];
 
@@ -211,15 +213,25 @@ export default function Nav({
             </button>
           )}
 
-          {/* Balance — always visible, bold, prominent. Critical info for traders. */}
-          <div className="text-right">
+          {/* Balance — always visible, bold, prominent. Critical info for traders.
+              Shown in full (never abbreviated) with responsive sizing so large
+              values scale down on small screens instead of overflowing. */}
+          <div className="text-right min-w-0">
             <div className="text-[10px] uppercase tracking-wider text-muted leading-none">
               {isDemo ? "Demo" : "Real"}
             </div>
-            <div className="font-mono text-base font-bold leading-tight">
-              {fmtGhs(balance)}
+            <div className="font-mono font-bold leading-tight tabular-nums whitespace-nowrap text-sm sm:text-base">
+              {fmtGhsFull(balance)}
             </div>
           </div>
+
+          {/* Deposit shortcut — visible on desktop only */}
+          <Link
+            href="/wallet#deposit"
+            className="hidden sm:flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold bg-accent text-black hover:bg-accent/90 transition-colors"
+          >
+            + Deposit
+          </Link>
 
           {/* User avatar */}
           <div className="relative">
@@ -355,14 +367,14 @@ export default function Nav({
             <div className="grid grid-cols-2 gap-2">
               <div className={`rounded-xl px-3 py-2.5 border ${isDemo ? "border-border bg-panel2/50" : "border-accent/30 bg-accent/8"}`}>
                 <p className="text-[10px] text-muted uppercase tracking-wider mb-0.5">Real</p>
-                <p className="font-mono text-sm font-bold tabular-nums">
-                  {fmtGhs(me.wallet?.balance ?? 0)}
+                <p className="font-mono text-xs sm:text-sm font-bold tabular-nums truncate">
+                  {fmtGhsFull(me.wallet?.balance ?? 0)}
                 </p>
               </div>
               <div className={`rounded-xl px-3 py-2.5 border ${isDemo ? "border-accent/30 bg-accent/8" : "border-border bg-panel2/50"}`}>
                 <p className="text-[10px] text-muted uppercase tracking-wider mb-0.5">Demo</p>
-                <p className="font-mono text-sm font-bold tabular-nums text-accent">
-                  {fmtGhs(me.wallet?.demoBalance ?? 0)}
+                <p className="font-mono text-xs sm:text-sm font-bold tabular-nums truncate text-accent">
+                  {fmtGhsFull(me.wallet?.demoBalance ?? 0)}
                 </p>
               </div>
             </div>
@@ -407,6 +419,16 @@ export default function Nav({
               </span>
             </button>
           )}
+
+          {/* Deposit — primary CTA in mobile drawer */}
+          <Link
+            href="/wallet#deposit"
+            onClick={() => setMobileNavOpen(false)}
+            className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold bg-accent text-black hover:bg-accent/90 transition-colors w-full"
+          >
+            <span className="w-5 text-center text-base leading-none">💰</span>
+            Deposit
+          </Link>
 
           {/* Referral */}
           {me?.referralCode && (

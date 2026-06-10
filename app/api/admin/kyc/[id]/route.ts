@@ -24,7 +24,7 @@ export async function PATCH(
 
     const { data: submission } = await supabaseAdmin
       .from("kyc_submissions")
-      .select("id, user_id, status, mobile_number, mobile_provider")
+      .select("id, user_id, status, mobile_number, mobile_provider, mobile_name")
       .eq("id", id)
       .single();
 
@@ -46,6 +46,7 @@ export async function PATCH(
     if (newStatus === "APPROVED" && submission.mobile_number) {
       profileUpdate.verified_mobile_number   = submission.mobile_number;
       profileUpdate.verified_mobile_provider = submission.mobile_provider;
+      profileUpdate.verified_mobile_name     = submission.mobile_name;
     }
     await supabaseAdmin
       .from("profiles")

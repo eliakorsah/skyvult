@@ -17,14 +17,14 @@ import OnboardingTour from "@/components/OnboardingTour";
 
 const Chart = dynamic(() => import("@/components/Chart"), { ssr: false });
 
-const ASSETS = ["EUR/USD", "GBP/USD", "BTC/USD", "GOLD", "OIL", "ETH/USD"];
+const ASSETS = ["SVX Prime", "SVX Alpha", "SVX Titan", "SVX Velocity", "SVX Nova", "SVX Quantum"];
 
 export default function TradePage() {
   // DEMO/REAL mode now comes from the shared SessionProvider in
   // app/(authed)/layout.tsx, so the toggle in the Nav and the trading UI
   // both read/write the same source of truth across navigations.
   const { isDemo, setIsDemo, setLiveBalance } = useSession();
-  const [asset, setAsset] = useState("EUR/USD");
+  const [asset, setAsset] = useState("SVX Prime");
   const [ticksByAsset, setTicksByAsset] = useState<Record<string, Tick[]>>({});
   const [openTrades, setOpenTrades] = useState<any[]>([]);
   const [balance, setBalance] = useState({ real: 0, demo: 0 });
@@ -76,8 +76,18 @@ export default function TradePage() {
     };
     const i = setInterval(tick, 2000);
 
+    let hiddenAt = 0;
     function onVisible() {
-      if (document.visibilityState === "visible") { refreshTrades(); refreshBalance(); }
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        return;
+      }
+      // Hard reload if away for more than 10 minutes — avoids stale WS/price state.
+      if (hiddenAt && Date.now() - hiddenAt > 2 * 60 * 1000) {
+        window.location.reload();
+        return;
+      }
+      refreshTrades(); refreshBalance();
     }
     document.addEventListener("visibilitychange", onVisible);
 
@@ -121,6 +131,9 @@ export default function TradePage() {
         winStreakRef.current = 0;
       }
       setResult({ status: msg.status, payout: msg.payout, exitPrice: msg.exitPrice });
+      // Remove the settled trade immediately so chart lines clear at once —
+      // don't wait for the async refreshTrades() fetch which can race or fail.
+      setOpenTrades((prev) => prev.filter((t) => t.id !== msg.tradeId));
       refreshTrades(); refreshBalance();
     }
   }, [refreshTrades, refreshBalance]);
