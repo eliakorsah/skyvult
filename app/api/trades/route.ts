@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 const Schema = z.object({
   asset: z.string(),
   direction: z.enum(["UP", "DOWN"]),
-  amount: z.number().positive(),
+  amount: z.number().finite().positive(),
   expirySeconds: z.number().int().positive(),
   isDemo: z.boolean().optional().default(false),
 });

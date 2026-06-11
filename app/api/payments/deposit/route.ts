@@ -15,7 +15,7 @@ import crypto from "crypto";
 export const runtime = "nodejs";
 
 const Schema = z.object({
-  amount: z.number().positive(),
+  amount: z.number().finite().positive(),
   phone:  z.string().min(9).max(20),
   // UI-level provider label (we map to Korapay operator slugs internally).
   provider: z.enum(["MTN", "TELECEL", "AIRTELTIGO"]),

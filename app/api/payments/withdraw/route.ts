@@ -10,7 +10,7 @@ import { withLock } from "@/lib/mutex";
 export const runtime = "nodejs";
 
 const Schema = z.object({
-  amount: z.number().positive(),
+  amount: z.number().finite().positive(),
 });
 
 function makeReference(userId: string): string {

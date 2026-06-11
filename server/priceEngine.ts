@@ -59,7 +59,11 @@ function round(n: number, d: number) {
 }
 
 function trendMag(cfg: AssetConfig) {
-  return cfg.volatility * 0.05;
+  // Momentum drift per tick. Kept small (was 0.05) so the price stays lively
+  // but the directional bias is far below the noise floor — a trend-following
+  // user can't accumulate enough edge over a short expiry to beat the
+  // symmetric-TP/SL house edge (payout 1.80 ⇒ break-even win rate 55.6%).
+  return cfg.volatility * 0.012;
 }
 
 function bucketOf(timestampMs: number): number {
