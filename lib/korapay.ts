@@ -20,12 +20,14 @@ if (!SECRET && typeof window === "undefined") {
   console.warn("[korapay] KORAPAY_SECRET_KEY not set — deposits are disabled until configured in .env.local");
 }
 
-/** Korapay mobile-money operator slugs (Ghana). Used for disbursements and,
- *  where required, charges. TELECEL is still "vodafone" on Korapay's side. */
+/** Korapay `mobile_money.network` values (Ghana). Korapay's enum is shared
+ *  across countries and capitalised — TELECEL maps to "Vodafone" (its legacy
+ *  brand on Korapay's side) and AIRTELTIGO to "Tigo" (AirtelTigo Money's
+ *  legacy "Tigo Cash" brand); there is no "AirtelTigo" enum value. */
 export const MOBILE_PROVIDERS = {
-  MTN:        "mtn",
-  TELECEL:    "vodafone",
-  AIRTELTIGO: "airteltigo",
+  MTN:        "Mtn",
+  TELECEL:    "Vodafone",
+  AIRTELTIGO: "Tigo",
 } as const;
 export type MobileProvider = keyof typeof MOBILE_PROVIDERS;
 
@@ -77,8 +79,8 @@ export async function chargeMobileMoney(opts: {
         currency:  "GHS",
         customer:  { email: opts.email, name: opts.name ?? opts.email },
         mobile_money: {
-          number:   opts.phone,
-          operator: MOBILE_PROVIDERS[opts.provider],
+          number:  opts.phone,
+          network: MOBILE_PROVIDERS[opts.provider],
         },
       }),
     },

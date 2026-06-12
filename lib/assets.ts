@@ -55,10 +55,11 @@ export const RISK = {
   MAX_TRADE: 5000,
   MAX_OPEN_PER_USER: 10,
   LARGE_TRADE_THRESHOLD: 1000,
-  // Smallest real-money deposit accepted via MoMo. Higher than MIN_TRADE so
-  // the per-transaction MoMo fee (~₵0.50–₵1) stays under ~1.5% of the deposit,
-  // and high enough that the ₵10 referral bonus can't be farmed profitably.
-  MIN_DEPOSIT: 80,
+  // TEMP for live MoMo testing — raise back to 80 before launch. Normally
+  // higher than MIN_TRADE so the per-transaction MoMo fee (~₵0.50–₵1) stays
+  // under ~1.5% of the deposit, and high enough that the ₵10 referral bonus
+  // can't be farmed profitably.
+  MIN_DEPOSIT: 1,
 };
 
 export const EXPIRY_OPTIONS = [5, 30, 60, 120, 180, 300];
