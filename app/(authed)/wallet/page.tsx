@@ -32,10 +32,13 @@ const TX_COLOR: Record<string, string> = {
   TRADE_DEBIT: "text-down",
 };
 
+// Telecel/AirtelTigo go via Korapay, which is switched off until the
+// merchant account is configured for Mobile Money — MTN direct is the only
+// live deposit rail for now.
 const PROVIDERS = [
-  { code: "MTN",        label: "MTN MoMo" },
-  { code: "TELECEL",    label: "Telecel Cash" },
-  { code: "AIRTELTIGO", label: "AirtelTigo Money" },
+  { code: "MTN",        label: "MTN MoMo",         enabled: true },
+  { code: "TELECEL",    label: "Telecel Cash",     enabled: false },
+  { code: "AIRTELTIGO", label: "AirtelTigo Money", enabled: false },
 ] as const;
 type ProviderCode = (typeof PROVIDERS)[number]["code"];
 
@@ -271,7 +274,8 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
                 : "";
     if (local.length === 10) {
       const g = guess(local);
-      if (g) setProvider(g);
+      // Only auto-switch to networks we actually support right now.
+      if (g === "MTN") setProvider(g);
     }
   }
 
@@ -368,11 +372,13 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
             {PROVIDERS.map((p) => (
               <button
                 key={p.code}
-                onClick={() => setProvider(p.code)}
-                disabled={!!pending}
-                className={`tab text-xs py-2 ${provider === p.code ? "tab-active" : "tab-idle bg-panel2"}`}
+                onClick={() => p.enabled && setProvider(p.code)}
+                disabled={!!pending || !p.enabled}
+                title={p.enabled ? undefined : "Coming soon"}
+                className={`tab text-xs py-2 ${provider === p.code ? "tab-active" : "tab-idle bg-panel2"} ${p.enabled ? "" : "opacity-40 cursor-not-allowed"}`}
               >
                 {p.label.replace(" MoMo", "").replace(" Cash", "").replace(" Money", "")}
+                {!p.enabled && <span className="block text-[9px] normal-case">Soon</span>}
               </button>
             ))}
           </div>
