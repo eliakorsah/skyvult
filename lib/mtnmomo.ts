@@ -17,8 +17,7 @@ const SECRET          = process.env.MTN_CONSUMER_SECRET || "";
 const SUBSCRIPTION    = process.env.MTN_SUBSCRIPTION_KEY || ""; // Ocp-Apim-Subscription-Key, if the product requires it
 const TARGET_ENV      = process.env.MTN_TARGET_ENVIRONMENT || "mtnghana";
 const CALLBACK_URL    = process.env.MTN_CALLBACK_URL || "";     // e.g. https://skyvult.com/api/payments/mtn-callback
-// Overridable paths (defaults follow MTN's collections convention).
-const TOKEN_PATH      = process.env.MTN_TOKEN_PATH      || "/collection/token/";
+// Overridable path (default follows MTN's collections convention).
 const REQUESTTOPAY_PATH = process.env.MTN_COLLECTION_PATH || "/collection/v1_0/requesttopay";
 
 export function isMtnConfigured(): boolean {
@@ -37,18 +36,18 @@ async function getAccessToken(): Promise<string> {
   if (!isMtnConfigured()) throw new Error("MTN not configured");
   if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) return cachedToken.token;
 
-  const basic = Buffer.from(`${KEY}:${SECRET}`).toString("base64");
-  const res = await fetch(`${API_BASE}${TOKEN_PATH}`, {
+  // api.mtn.com OAuth V1: grant_type is a QUERY param, client_id/client_secret
+  // go in the form-encoded body. (Confirmed working against the real API —
+  // other combinations return a gateway-level 400 with no useful detail.)
+  const res = await fetch(`${API_BASE}/v1/oauth/access_token?grant_type=client_credentials`, {
     method:  "POST",
-    headers: {
-      "Authorization": `Basic ${basic}`,
-      ...(SUBSCRIPTION ? { "Ocp-Apim-Subscription-Key": SUBSCRIPTION } : {}),
-    },
-    cache: "no-store",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body:    `client_id=${encodeURIComponent(KEY)}&client_secret=${encodeURIComponent(SECRET)}`,
+    cache:   "no-store",
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok || !body?.access_token) {
-    throw new Error(body?.error_description || body?.message || `MTN token failed (${res.status})`);
+    throw new Error(body?.faultMessage || body?.error_description || body?.message || `MTN token failed (${res.status})`);
   }
   const ttlSec = Number(body.expires_in) || 3600;
   cachedToken = { token: body.access_token, expiresAt: Date.now() + ttlSec * 1000 };

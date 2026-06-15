@@ -50,6 +50,13 @@ export function getPayoutRatio(asset: string): number {
   return ASSET_CONFIGS[asset]?.payoutRatio ?? PAYOUT_RATIO;
 }
 
+// TEMP: both deposit rails are blocked on provider-side account config —
+// MTN's "Payments V1" product token doesn't match any API on the gateway
+// (InvalidAPICallAsNoApiProductMatchFound / 418s on documented paths), and
+// Korapay's Mobile Money product isn't provisioned for GHS. Flip back to
+// true once either provider confirms a working integration.
+export const DEPOSITS_ENABLED = false;
+
 export const RISK = {
   MIN_TRADE: 10,
   MAX_TRADE: 5000,

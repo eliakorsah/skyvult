@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
 import { checkLimit } from "@/lib/ratelimit";
-import { RISK } from "@/lib/assets";
+import { RISK, DEPOSITS_ENABLED } from "@/lib/assets";
 import { normalizeGhanaPhone } from "@/lib/korapay";
 import { requestToPay, isMtnConfigured } from "@/lib/mtnmomo";
 import crypto from "crypto";
@@ -21,6 +21,13 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requireUser(req);
     const body = Schema.parse(await req.json());
+
+    // Both deposit rails (MTN, Korapay) are blocked on provider-side account
+    // config right now — fail fast with a clear message instead of a
+    // confusing provider error. See DEPOSITS_ENABLED in lib/assets.ts.
+    if (!DEPOSITS_ENABLED) {
+      return fail(503, "Deposits are temporarily unavailable while we finish setting up our payment provider. Please check back soon.");
+    }
 
     // Floor: covers MoMo transaction fees + keeps the platform from being
     // spammed with tiny deposits that lose money on fees alone.

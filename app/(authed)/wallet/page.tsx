@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { DEPOSITS_ENABLED } from "@/lib/assets";
 
 type Tx = {
   id: string; type: string; amount: number; balanceBefore: number;
@@ -343,6 +344,12 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
       </div>
       <p className="text-muted text-xs mt-1">Add real cedis to your balance via Mobile Money.</p>
 
+      {!DEPOSITS_ENABLED && (
+        <div className="mt-3 text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2 text-muted">
+          Deposits are temporarily unavailable while we finish setting up our payment provider. Please check back soon.
+        </div>
+      )}
+
       <div className="mt-3 space-y-2">
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Amount (GHS)</div>
@@ -351,7 +358,7 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
             value={amount}
             onChange={(e) => setAmount(Number(e.target.value || 0))}
             className="input font-mono"
-            disabled={!!pending}
+            disabled={!!pending || !DEPOSITS_ENABLED}
           />
         </div>
 
@@ -362,7 +369,7 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
             value={phone}
             onChange={(e) => onPhoneChange(e.target.value)}
             className="input font-mono"
-            disabled={!!pending}
+            disabled={!!pending || !DEPOSITS_ENABLED}
           />
         </div>
 
@@ -373,7 +380,7 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
               <button
                 key={p.code}
                 onClick={() => p.enabled && setProvider(p.code)}
-                disabled={!!pending || !p.enabled}
+                disabled={!!pending || !p.enabled || !DEPOSITS_ENABLED}
                 title={p.enabled ? undefined : "Coming soon"}
                 className={`tab text-xs py-2 ${provider === p.code ? "tab-active" : "tab-idle bg-panel2"} ${p.enabled ? "" : "opacity-40 cursor-not-allowed"}`}
               >
@@ -394,7 +401,7 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
           <div className="mt-2 text-[10px] text-muted font-mono break-all">ref: {pending.reference}</div>
         </div>
       ) : (
-        <button onClick={startDeposit} disabled={busy} className="btn btn-up w-full mt-4 py-2.5 disabled:opacity-50">
+        <button onClick={startDeposit} disabled={busy || !DEPOSITS_ENABLED} className="btn btn-up w-full mt-4 py-2.5 disabled:opacity-50">
           {busy ? "Starting…" : `Deposit ₵${amount.toLocaleString()}`}
         </button>
       )}
