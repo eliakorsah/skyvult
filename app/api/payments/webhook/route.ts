@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { verifyWebhookSignature } from "@/lib/korapay";
+import { verifyWebhookSignature } from "@/lib/paystack";
 import { withLock } from "@/lib/mutex";
 import { creditDepositWallet, failDeposit } from "@/lib/depositCredit";
 
@@ -9,10 +9,10 @@ export const runtime = "nodejs";
 // the body. Always run fresh.
 export const dynamic = "force-dynamic";
 
-/** Korapay webhook receiver. Korapay signs the JSON-stringified `data` object
- *  (HMAC-SHA256) in the `x-korapay-signature` header. We parse the body,
- *  verify the signature over `data`, then resolve the matching `payments` row
- *  idempotently (Korapay retries on any non-2xx response).
+/** Paystack webhook receiver. Paystack signs the RAW request body
+ *  (HMAC-SHA512) in the `x-paystack-signature` header. We verify the
+ *  signature, then resolve the matching `payments` row idempotently
+ *  (Paystack retries on any non-2xx response).
  *
  *  Events we care about:
  *    - charge.success      → DEPOSIT succeeded; credit the wallet.
@@ -24,6 +24,15 @@ export async function POST(req: NextRequest) {
   try {
     const raw = await req.text();
 
+    // Paystack signs the whole raw body, HMAC-SHA512.
+    const sig = req.headers.get("x-paystack-signature");
+    if (!verifyWebhookSignature(raw, sig)) {
+      // Always return 200 even on bad signature so a probing attacker gets no
+      // extra signal about which payloads were valid. Log for audit only.
+      console.warn("[paystack-webhook] bad signature; ignoring");
+      return NextResponse.json({ ok: true });
+    }
+
     let payload: any;
     try { payload = JSON.parse(raw); } catch {
       return NextResponse.json({ ok: true });
@@ -31,15 +40,6 @@ export async function POST(req: NextRequest) {
 
     const event: string = payload?.event ?? "";
     const data:  any    = payload?.data  ?? {};
-
-    // Korapay signs the `data` object only (not the whole body), HMAC-SHA256.
-    const sig = req.headers.get("x-korapay-signature");
-    if (!verifyWebhookSignature(data, sig)) {
-      // Always return 200 even on bad signature so a probing attacker gets no
-      // extra signal about which payloads were valid. Log for audit only.
-      console.warn("[korapay-webhook] bad signature; ignoring");
-      return NextResponse.json({ ok: true });
-    }
 
     if (event === "charge.success" || event === "charge.failed") {
       await handleChargeResult(event, data);
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error("[korapay-webhook] handler crashed:", err?.message);
+    console.error("[paystack-webhook] handler crashed:", err?.message);
     // Returning 200 prevents a retry storm even when we hit a transient
     // error. The next event of the same kind will resolve it.
     return NextResponse.json({ ok: true });
@@ -73,7 +73,7 @@ async function handleChargeResult(event: string, data: any): Promise<void> {
     .eq("provider_reference", reference)
     .single();
   if (!pay) {
-    console.warn("[korapay-webhook] charge for unknown reference:", reference);
+    console.warn("[paystack-webhook] charge for unknown reference:", reference);
     return;
   }
   if (pay.status !== "PENDING") return; // already resolved
@@ -84,10 +84,10 @@ async function handleChargeResult(event: string, data: any): Promise<void> {
   }
 
   // event === "charge.success" → credit the wallet.
-  // Korapay returns amount in MAJOR units (cedis) — no ÷100. Trust the
-  // provider amount over our originally-requested amount. Fall back to the
-  // amount we recorded on the payments row if the webhook omits it.
-  const cedis = Number(data?.amount ?? pay.amount);
+  // Paystack returns amount in PESEWAS — ÷100 for cedis. Trust the provider
+  // amount over our originally-requested amount. Fall back to the amount we
+  // recorded on the payments row if the webhook omits it.
+  const cedis = data?.amount != null ? Number(data.amount) / 100 : Number(pay.amount);
   await creditDepositWallet(pay, cedis);
 }
 
@@ -161,6 +161,6 @@ async function handleTransferResult(data: any, outcome: "SUCCESS" | "FAILED"): P
         return;
       }
     }
-    console.error("[korapay-webhook] withdrawal refund failed after retries", reference);
+    console.error("[paystack-webhook] withdrawal refund failed after retries", reference);
   });
 }

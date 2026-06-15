@@ -6,7 +6,7 @@ import { ok, fail, handleError } from "@/lib/http";
 import { checkLimit } from "@/lib/ratelimit";
 import { RISK, DEPOSITS_ENABLED } from "@/lib/assets";
 import { normalizeGhanaPhone } from "@/lib/korapay";
-import { requestToPay, isMtnConfigured } from "@/lib/mtnmomo";
+import { chargeMobileMoney, isPaystackConfigured } from "@/lib/paystack";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -22,11 +22,11 @@ export async function POST(req: NextRequest) {
     const user = await requireUser(req);
     const body = Schema.parse(await req.json());
 
-    // Both deposit rails (MTN, Korapay) are blocked on provider-side account
-    // config right now — fail fast with a clear message instead of a
-    // confusing provider error. See DEPOSITS_ENABLED in lib/assets.ts.
     if (!DEPOSITS_ENABLED) {
       return fail(503, "Deposits are temporarily unavailable while we finish setting up our payment provider. Please check back soon.");
+    }
+    if (!isPaystackConfigured()) {
+      return fail(503, "Deposits are temporarily unavailable. Please try again later.");
     }
 
     // Floor: covers MoMo transaction fees + keeps the platform from being
@@ -40,64 +40,55 @@ export async function POST(req: NextRequest) {
     const phone = normalizeGhanaPhone(body.phone);
     if (!phone) return fail(400, "Invalid Ghana mobile number");
 
-    // Korapay (Telecel/AirtelTigo rail) is switched off until the merchant
-    // account is configured for Mobile Money — MTN direct is the only live
-    // rail for now.
-    if (body.provider !== "MTN") {
-      return fail(400, "Telecel and AirtelTigo deposits are temporarily unavailable. Please use MTN MoMo.");
-    }
-    if (!isMtnConfigured()) {
-      return fail(503, "Deposits are temporarily unavailable. Please try again later.");
-    }
-
     // 5 deposit attempts per 10 min per user. Stops a stuck user from
-    // hammering MTN (each attempt sends a USSD push that costs them
-    // attention even if they never enter the PIN).
+    // hammering the provider (each attempt sends a USSD push that costs
+    // them attention even if they never enter the PIN).
     const rl = await checkLimit(req, "deposit", 5, 600, user.id);
     if (!rl.success) return fail(429, "Too many deposit attempts — try again in a moment");
 
-    // Insert the PENDING audit row BEFORE calling MTN, so a successful
+    // Insert the PENDING audit row BEFORE calling Paystack, so a successful
     // provider call with a network drop on our side still leaves a trail.
-    // Status/callback/finalize all key off provider_reference.
-    const mtnRef = crypto.randomUUID();
+    // Status/webhook resolution both key off provider_reference.
+    const reference = crypto.randomUUID();
     const { error: insErr } = await supabaseAdmin.from("payments").insert({
       user_id: user.id,
       type:    "DEPOSIT",
       amount:  body.amount,
       status:  "PENDING",
-      provider: "mtn",
-      provider_reference: mtnRef,
+      provider: "paystack",
+      provider_reference: reference,
       mobile_provider: body.provider,
       mobile_number:   phone,
     });
     if (insErr) {
-      console.error("[deposit] failed to insert MTN payments row:", insErr.message);
+      console.error("[deposit] failed to insert payments row:", insErr.message);
       return fail(500, "Could not start deposit");
     }
 
     try {
-      await requestToPay({
-        amountGhs:  body.amount,
+      const charge = await chargeMobileMoney({
+        amountGhs: body.amount,
+        email:     user.email,
         phone,
-        externalId: mtnRef,
-        referenceId: mtnRef,
+        provider:  body.provider,
+        reference,
       });
-      // MTN replied 202 — the user now approves the prompt on their phone.
-      // Resolution happens via the status poll / MTN callback (verify-then-credit).
+      // pay_offline = USSD prompt sent; send_otp = provider needs an OTP we
+      // don't collect yet (Telecel only — disabled in the UI for now).
       return ok({
-        reference: mtnRef,
-        status:    "pending",
-        message:   "Approve the payment prompt on your MTN phone.",
+        reference,
+        status:  "pending",
+        message: charge.displayText || "Approve the payment prompt on your phone.",
       });
     } catch (err: any) {
       await supabaseAdmin
         .from("payments")
         .update({
           status: "FAILED",
-          failure_reason: err?.message?.slice(0, 200) ?? "MTN rejected the charge",
+          failure_reason: err?.message?.slice(0, 200) ?? "Paystack rejected the charge",
           resolved_at: new Date().toISOString(),
         })
-        .eq("provider_reference", mtnRef);
+        .eq("provider_reference", reference);
       return fail(400, err?.message ?? "Could not start MoMo charge");
     }
   } catch (e) {

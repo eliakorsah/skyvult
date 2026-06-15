@@ -2,15 +2,14 @@ import { NextRequest } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
-import { verifyCharge } from "@/lib/korapay";
-import { finalizeMtnDeposit } from "@/lib/mtnFinalize";
+import { verifyCharge } from "@/lib/paystack";
 
 export const runtime = "nodejs";
 
 /** Polled by the deposit UI while the user is entering their MoMo PIN.
  *  Primary path: look at our local `payments` row — the webhook updates
- *  it the moment Korapay confirms. Fallback: if the webhook hasn't
- *  arrived (slow tunnel, missed delivery), call Korapay's verify
+ *  it the moment Paystack confirms. Fallback: if the webhook hasn't
+ *  arrived (slow tunnel, missed delivery), call Paystack's verify
  *  endpoint directly so a working flow doesn't stay stuck "PENDING"
  *  forever on the client.
  *
@@ -33,17 +32,7 @@ export async function GET(req: NextRequest) {
     // Resolved already — return current state.
     if (pay.status !== "PENDING") return ok(pay);
 
-    // MTN deposits have no signed webhook — they're resolved by re-verifying
-    // with MTN here (and from the MTN callback route). finalizeMtnDeposit
-    // credits idempotently if MTN reports SUCCESSFUL.
-    if (pay.provider === "mtn") {
-      const resolved = await finalizeMtnDeposit(ref);
-      if (resolved === "SUCCESS") return ok({ ...pay, status: "SUCCESS" });
-      if (resolved === "FAILED")  return ok({ ...pay, status: "FAILED" });
-      return ok({ ...pay, status: "PENDING", hint: "Waiting for you to approve the prompt on your phone…" });
-    }
-
-    // Fallback: ask Korapay directly. If the charge succeeded, the
+    // Fallback: ask Paystack directly. If the charge succeeded, the
     // webhook is delayed/missed — let the webhook handle the actual
     // wallet credit (idempotent), but surface the right status to the UI
     // immediately so the user doesn't stare at "pending" forever.

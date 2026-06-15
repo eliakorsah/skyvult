@@ -33,9 +33,10 @@ const TX_COLOR: Record<string, string> = {
   TRADE_DEBIT: "text-down",
 };
 
-// Telecel/AirtelTigo go via Korapay, which is switched off until the
-// merchant account is configured for Mobile Money — MTN direct is the only
-// live deposit rail for now.
+// All three go via Paystack. MTN resolves with a USSD prompt
+// (data.status === "pay_offline"); Telecel/AirtelTigo may require an OTP
+// step (data.status === "send_otp") that isn't collected in this UI yet —
+// keep them disabled until that flow is built.
 const PROVIDERS = [
   { code: "MTN",        label: "MTN MoMo",         enabled: true },
   { code: "TELECEL",    label: "Telecel Cash",     enabled: false },
