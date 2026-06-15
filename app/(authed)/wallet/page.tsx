@@ -33,14 +33,13 @@ const TX_COLOR: Record<string, string> = {
   TRADE_DEBIT: "text-down",
 };
 
-// All three go via Paystack. MTN resolves with a USSD prompt
-// (data.status === "pay_offline"); Telecel/AirtelTigo may require an OTP
-// step (data.status === "send_otp") that isn't collected in this UI yet —
-// keep them disabled until that flow is built.
+// All three go via Paystack. Some networks resolve immediately via USSD
+// prompt (data.status === "pay_offline"); others require an OTP
+// (data.status === "send_otp"), which the OTP input below collects.
 const PROVIDERS = [
   { code: "MTN",        label: "MTN MoMo",         enabled: true },
-  { code: "TELECEL",    label: "Telecel Cash",     enabled: false },
-  { code: "AIRTELTIGO", label: "AirtelTigo Money", enabled: false },
+  { code: "TELECEL",    label: "Telecel Cash",     enabled: true },
+  { code: "AIRTELTIGO", label: "AirtelTigo Money", enabled: true },
 ] as const;
 type ProviderCode = (typeof PROVIDERS)[number]["code"];
 
@@ -264,6 +263,9 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
   // While the user is entering their MoMo PIN, we poll the status endpoint
   // until the webhook resolves the payment one way or the other.
   const [pending, setPending] = useState<{ reference: string; hint: string } | null>(null);
+  // Some networks (e.g. MTN) require a one-time code before the charge can
+  // proceed — collected here and sent to /api/payments/deposit/otp.
+  const [otp, setOtp] = useState<{ reference: string; hint: string; code: string } | null>(null);
   const pollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Auto-detect network on phone change (user can still override)
@@ -276,8 +278,7 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
                 : "";
     if (local.length === 10) {
       const g = guess(local);
-      // Only auto-switch to networks we actually support right now.
-      if (g === "MTN") setProvider(g);
+      if (g) setProvider(g);
     }
   }
 
@@ -286,6 +287,39 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
   }
 
   useEffect(() => () => stopPolling(), []);
+
+  function startPolling(reference: string) {
+    // Stops when status leaves PENDING or after ~3 min.
+    let elapsed = 0;
+    pollerRef.current = setInterval(async () => {
+      elapsed += 3;
+      try {
+        const s = await api<Payment & { hint?: string }>(`/api/payments/status?reference=${encodeURIComponent(reference)}`);
+        if (s.status === "SUCCESS") {
+          stopPolling();
+          setPending(null);
+          setBusy(false);
+          setPhone("");
+          onResolved();
+        } else if (s.status === "FAILED" || s.status === "ABANDONED") {
+          stopPolling();
+          setPending(null);
+          setBusy(false);
+          setError(s.failureReason ?? "Payment failed. Please try again.");
+        } else if (s.hint) {
+          setPending((p) => p ? { ...p, hint: s.hint! } : p);
+        }
+      } catch { /* transient — keep polling */ }
+      if (elapsed > 180) {
+        // ~3 min timeout. The actual webhook can still arrive later and
+        // credit the wallet — we just stop tying up the UI.
+        stopPolling();
+        setPending(null);
+        setBusy(false);
+        setError("Taking too long. Check your transactions list in a minute.");
+      }
+    }, 3000);
+  }
 
   async function startDeposit() {
     if (busy) return;
@@ -300,39 +334,39 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
         method: "POST",
         body: JSON.stringify({ amount, phone, provider }),
       });
+      if (r.status === "send_otp") {
+        // Network needs a one-time code before the charge can proceed.
+        setBusy(false);
+        setOtp({ reference: r.reference, hint: r.message, code: "" });
+        return;
+      }
       setPending({ reference: r.reference, hint: r.message });
-      // Start polling. Stops when status leaves PENDING or after ~3 min.
-      let elapsed = 0;
-      pollerRef.current = setInterval(async () => {
-        elapsed += 3;
-        try {
-          const s = await api<Payment & { hint?: string }>(`/api/payments/status?reference=${encodeURIComponent(r.reference)}`);
-          if (s.status === "SUCCESS") {
-            stopPolling();
-            setPending(null);
-            setBusy(false);
-            setPhone("");
-            onResolved();
-          } else if (s.status === "FAILED" || s.status === "ABANDONED") {
-            stopPolling();
-            setPending(null);
-            setBusy(false);
-            setError(s.failureReason ?? "Payment failed. Please try again.");
-          } else if (s.hint) {
-            setPending((p) => p ? { ...p, hint: s.hint! } : p);
-          }
-        } catch { /* transient — keep polling */ }
-        if (elapsed > 180) {
-          // ~3 min timeout. The actual webhook can still arrive later and
-          // credit the wallet — we just stop tying up the UI.
-          stopPolling();
-          setPending(null);
-          setBusy(false);
-          setError("Taking too long. Check your transactions list in a minute.");
-        }
-      }, 3000);
+      startPolling(r.reference);
     } catch (e: any) {
       setError(e?.message ?? "Could not start deposit");
+      setBusy(false);
+    }
+  }
+
+  async function submitOtp() {
+    if (!otp || busy) return;
+    if (!otp.code.trim()) {
+      setError("Please enter the code sent to your phone.");
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      const r = await api<{ status: string; message: string }>("/api/payments/deposit/otp", {
+        method: "POST",
+        body: JSON.stringify({ reference: otp.reference, otp: otp.code }),
+      });
+      const reference = otp.reference;
+      setOtp(null);
+      setPending({ reference, hint: r.message });
+      startPolling(reference);
+    } catch (e: any) {
+      setError(e?.message ?? "Incorrect code — please try again");
       setBusy(false);
     }
   }
@@ -359,7 +393,7 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
             value={amount}
             onChange={(e) => setAmount(Number(e.target.value || 0))}
             className="input font-mono"
-            disabled={!!pending || !DEPOSITS_ENABLED}
+            disabled={!!pending || !!otp || !DEPOSITS_ENABLED}
           />
         </div>
 
@@ -370,7 +404,7 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
             value={phone}
             onChange={(e) => onPhoneChange(e.target.value)}
             className="input font-mono"
-            disabled={!!pending || !DEPOSITS_ENABLED}
+            disabled={!!pending || !!otp || !DEPOSITS_ENABLED}
           />
         </div>
 
@@ -381,7 +415,7 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
               <button
                 key={p.code}
                 onClick={() => p.enabled && setProvider(p.code)}
-                disabled={!!pending || !p.enabled || !DEPOSITS_ENABLED}
+                disabled={!!pending || !!otp || !p.enabled || !DEPOSITS_ENABLED}
                 title={p.enabled ? undefined : "Coming soon"}
                 className={`tab text-xs py-2 ${provider === p.code ? "tab-active" : "tab-idle bg-panel2"} ${p.enabled ? "" : "opacity-40 cursor-not-allowed"}`}
               >
@@ -395,7 +429,22 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
 
       {error && <div className="mt-3 text-down text-xs bg-down/10 border border-down/30 rounded-md px-3 py-2">{error}</div>}
 
-      {pending ? (
+      {otp ? (
+        <div className="mt-3 text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2 text-white">
+          <div className="font-semibold text-accent">Enter the code sent to your phone</div>
+          <div className="mt-1 text-muted">{otp.hint || "Enter the OTP sent to your phone to confirm this deposit."}</div>
+          <input
+            type="text" inputMode="numeric" placeholder="Enter code"
+            value={otp.code}
+            onChange={(e) => setOtp((o) => o ? { ...o, code: e.target.value } : o)}
+            className="input font-mono mt-2"
+            autoFocus
+          />
+          <button onClick={submitOtp} disabled={busy} className="btn btn-up w-full mt-2 py-2.5 disabled:opacity-50">
+            {busy ? "Confirming…" : "Confirm code"}
+          </button>
+        </div>
+      ) : pending ? (
         <div className="mt-3 text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2 text-white">
           <div className="font-semibold text-accent">Check your phone</div>
           <div className="mt-1 text-muted">{pending.hint || "Approve the prompt to complete your deposit."}</div>

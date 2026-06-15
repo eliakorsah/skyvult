@@ -62,9 +62,10 @@ async function paystackFetch<T = any>(path: string, init: RequestInit = {}): Pro
 // ─── Charges (deposits) ─────────────────────────────────────────────────
 
 /** Initiate a mobile-money charge. Paystack returns immediately with
- *  data.status === "pay_offline" — the user authorises on their phone via
- *  USSD prompt and the final outcome lands on our webhook. Amount is in
- *  CEDIS (major units); converted to pesewas here. */
+ *  data.status === "pay_offline" (USSD prompt, no further action from us)
+ *  or "send_otp" (the network requires an OTP — call submitOtp() with the
+ *  code the user enters). The final outcome always lands on our webhook.
+ *  Amount is in CEDIS (major units); converted to pesewas here. */
 export async function chargeMobileMoney(opts: {
   amountGhs: number;
   email: string;
@@ -92,6 +93,23 @@ export async function chargeMobileMoney(opts: {
   return {
     status:      body.data.status,
     reference:   body.data.reference,
+    displayText: body.data.display_text,
+  };
+}
+
+/** Submit the OTP code the user received for a "send_otp" charge.
+ *  Response status is typically "pending" or "success" — either way the
+ *  final wallet credit happens via the charge.success webhook. */
+export async function submitOtp(otp: string, reference: string): Promise<{ status: string; displayText?: string }> {
+  const body = await paystackFetch<{ data: {
+    status: string;
+    display_text?: string;
+  } }>("/charge/submit_otp", {
+    method: "POST",
+    body: JSON.stringify({ otp, reference }),
+  });
+  return {
+    status:      body.data.status,
     displayText: body.data.display_text,
   };
 }

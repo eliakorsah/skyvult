@@ -3,15 +3,17 @@ import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
 import { verifyCharge } from "@/lib/paystack";
+import { creditDepositWallet, failDeposit } from "@/lib/depositCredit";
 
 export const runtime = "nodejs";
 
 /** Polled by the deposit UI while the user is entering their MoMo PIN.
  *  Primary path: look at our local `payments` row — the webhook updates
  *  it the moment Paystack confirms. Fallback: if the webhook hasn't
- *  arrived (slow tunnel, missed delivery), call Paystack's verify
- *  endpoint directly so a working flow doesn't stay stuck "PENDING"
- *  forever on the client.
+ *  arrived (slow tunnel, missed delivery, misconfigured webhook URL), call
+ *  Paystack's verify endpoint directly and resolve the payment ourselves —
+ *  same idempotent credit/fail path the webhook uses, so whichever arrives
+ *  first wins and the second is a no-op.
  *
  *  Scoped to the caller's own payments so you can't probe someone else's
  *  references. */
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest) {
 
     const { data: pay } = await supabaseAdmin
       .from("payments")
-      .select("status, type, amount, provider, failure_reason, resolved_at")
+      .select("id, user_id, status, type, amount, provider, provider_reference, failure_reason, resolved_at")
       .eq("provider_reference", ref)
       .eq("user_id", user.id)
       .single();
@@ -32,16 +34,25 @@ export async function GET(req: NextRequest) {
     // Resolved already — return current state.
     if (pay.status !== "PENDING") return ok(pay);
 
-    // Fallback: ask Paystack directly. If the charge succeeded, the
-    // webhook is delayed/missed — let the webhook handle the actual
-    // wallet credit (idempotent), but surface the right status to the UI
-    // immediately so the user doesn't stare at "pending" forever.
+    // Fallback: ask Paystack directly and resolve the payment ourselves if
+    // the webhook hasn't done so yet.
     try {
       const verify = await verifyCharge(ref);
       const ps = String(verify?.data?.status ?? "").toLowerCase();
-      if (ps === "success") return ok({ ...pay, status: "PENDING", hint: "Provider says success — finalising…" });
-      if (ps === "failed")  return ok({ ...pay, status: "PENDING", hint: "Provider says failed — finalising…" });
-      if (ps === "expired") return ok({ ...pay, status: "PENDING", hint: "Charge expired." });
+
+      if (ps === "success") {
+        const cedis = verify?.data?.amount != null ? Number(verify.data.amount) / 100 : Number(pay.amount);
+        await creditDepositWallet(pay, cedis);
+        return ok({ ...pay, status: "SUCCESS", resolved_at: new Date().toISOString() });
+      }
+      if (ps === "failed" || ps === "abandoned") {
+        const reason = verify?.data?.gateway_response || "Payment was not completed";
+        await failDeposit(pay, reason);
+        return ok({ ...pay, status: "FAILED", failure_reason: reason, resolved_at: new Date().toISOString() });
+      }
+      if (ps === "ongoing" || ps === "pending" || ps === "queued") {
+        return ok({ ...pay, hint: "Waiting for you to approve the payment on your phone…" });
+      }
     } catch {
       // verify failed — return whatever we have locally
     }

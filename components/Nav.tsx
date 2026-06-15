@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, clearTokens } from "@/lib/api";
 import { ASSET_CONFIGS, fmtGhsFull } from "@/lib/assets";
 import { AnimatePresence, motion } from "framer-motion";
@@ -48,6 +48,9 @@ export default function Nav({
   const [resetMsg, setResetMsg] = useState<string | null>(null);
   const [referral, setReferral] = useState<ReferralStats | null>(null);
   const [copied, setCopied] = useState(false);
+  const [notifCount, setNotifCount] = useState(0);
+  const prevNotifRef = useRef(0);
+  const firstNotifPollRef = useRef(true);
 
   // Load referral stats once when the avatar menu first opens. Keeps the
   // network cost off the initial Nav render — most users never open the menu.
@@ -135,10 +138,49 @@ export default function Nav({
     return () => { alive = false; clearInterval(i); };
   }, []);
 
+  // Admin notification bell — polls counts of items needing attention
+  // (pending payments, open support messages, pending KYC) and fires a
+  // browser Notification when the total goes up. Skipped entirely for
+  // non-admins so this never costs a regular user a request.
+  useEffect(() => {
+    if (me?.role !== "ADMIN") return;
+    let alive = true;
+    const poll = async () => {
+      try {
+        const r = await api<{ total: number }>("/api/admin/notifications");
+        if (!alive) return;
+        // Don't notify on the very first poll of the session — only on
+        // increases after that, so reopening the app doesn't replay backlog.
+        if (!firstNotifPollRef.current && r.total > prevNotifRef.current) {
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification("SkyVult Admin", {
+              body: `${r.total} item${r.total === 1 ? "" : "s"} need attention`,
+              icon: "/SkyVult logo.png",
+            });
+          }
+        }
+        firstNotifPollRef.current = false;
+        prevNotifRef.current = r.total;
+        setNotifCount(r.total);
+      } catch { /* silent — keep last good value */ }
+    };
+    poll();
+    const i = setInterval(poll, 15000);
+    return () => { alive = false; clearInterval(i); };
+  }, [me?.role]);
+
   // Close mobile nav on route change
   useEffect(() => setMobileNavOpen(false), [pathname]);
 
   function logout() { clearTokens(); router.push("/auth"); }
+
+  // Browser Notification permission is only grantable from a user gesture —
+  // ask the first time the admin opens the Admin tab rather than on mount.
+  function requestNotifPermission() {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }
 
   // Prefer the live balance passed from the parent page (polled every 2s
    // and updated immediately after trade results) over the value cached on
@@ -179,8 +221,14 @@ export default function Nav({
         <nav className="hidden md:flex items-center gap-1">
           {navLinks.map((l) => (
             <Link key={l.href} href={l.href}
-              className={`px-3 py-1.5 rounded-md text-sm transition-colors ${pathname === l.href ? "bg-panel2 text-white" : "text-muted hover:text-white"}`}>
+              onClick={() => l.href === "/admin" && requestNotifPermission()}
+              className={`relative px-3 py-1.5 rounded-md text-sm transition-colors ${pathname === l.href ? "bg-panel2 text-white" : "text-muted hover:text-white"}`}>
               {l.label}
+              {l.href === "/admin" && notifCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-down text-white text-[10px] font-bold grid place-items-center leading-none">
+                  {notifCount > 99 ? "99+" : notifCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>
@@ -389,7 +437,7 @@ export default function Nav({
               <Link
                 key={l.href}
                 href={l.href}
-                onClick={() => setMobileNavOpen(false)}
+                onClick={() => { setMobileNavOpen(false); if (l.href === "/admin") requestNotifPermission(); }}
                 className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all ${
                   active
                     ? "bg-accent/15 text-accent border border-accent/20"
@@ -398,7 +446,12 @@ export default function Nav({
               >
                 <span className="w-5 text-center text-base leading-none">{NAV_ICONS[l.href] ?? "›"}</span>
                 {l.label}
-                {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent" />}
+                {l.href === "/admin" && notifCount > 0 && (
+                  <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-down text-white text-[10px] font-bold grid place-items-center leading-none">
+                    {notifCount > 99 ? "99+" : notifCount}
+                  </span>
+                )}
+                {active && l.href !== "/admin" && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent" />}
               </Link>
             );
           })}

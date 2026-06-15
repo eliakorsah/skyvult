@@ -73,11 +73,28 @@ export async function POST(req: NextRequest) {
         provider:  body.provider,
         reference,
       });
-      // pay_offline = USSD prompt sent; send_otp = provider needs an OTP we
-      // don't collect yet (Telecel only — disabled in the UI for now).
+
+      // Some failures come back as a normal (status: true) /charge response
+      // with data.status === "failed" rather than an HTTP error — catch
+      // those here so the row isn't left PENDING forever.
+      if (charge.status === "failed") {
+        await supabaseAdmin
+          .from("payments")
+          .update({
+            status: "FAILED",
+            failure_reason: (charge.displayText || "Charge failed").slice(0, 200),
+            resolved_at: new Date().toISOString(),
+          })
+          .eq("provider_reference", reference);
+        return fail(400, charge.displayText || "Could not start MoMo charge");
+      }
+
+      // pay_offline = USSD prompt sent, nothing more to do; send_otp = the
+      // network needs a one-time code, which the UI collects via
+      // /api/payments/deposit/otp.
       return ok({
         reference,
-        status:  "pending",
+        status:  charge.status === "send_otp" ? "send_otp" : "pending",
         message: charge.displayText || "Approve the payment prompt on your phone.",
       });
     } catch (err: any) {
