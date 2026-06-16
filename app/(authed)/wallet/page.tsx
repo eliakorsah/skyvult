@@ -221,42 +221,32 @@ export default function WalletPage() {
 
 // ─── Deposit card ──────────────────────────────────────────────────────
 
-function DepositCard({ onResolved }: { onResolved: () => void }) {
-  const [amount, setAmount]       = useState(80);
-  const [busy,   setBusy]         = useState(false);
-  const [error,  setError]        = useState<string | null>(null);
-  const [status, setStatus]       = useState<{ type: "ok" | "pending" | "err"; text: string } | null>(null);
-
-  // On return from ExpressPay, read the ?deposit= param and show feedback.
-  useEffect(() => {
-    const params  = new URLSearchParams(window.location.search);
-    const deposit = params.get("deposit");
-    if (!deposit) return;
-    window.history.replaceState({}, "", "/wallet");
-    if (deposit === "success") {
-      setStatus({ type: "ok", text: "Deposit successful! Your balance has been updated." });
-      onResolved();
-    } else if (deposit === "pending") {
-      setStatus({ type: "pending", text: "Payment is processing — your balance will update in a few minutes. Check your transactions list." });
-    } else {
-      const reason = params.get("reason") || "Payment was not completed.";
-      setStatus({ type: "err", text: reason });
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+function DepositCard({ onResolved: _onResolved }: { onResolved: () => void }) {
+  const [amount,       setAmount]       = useState(80);
+  const [phone,        setPhone]        = useState("");
+  const [busy,         setBusy]         = useState(false);
+  const [error,        setError]        = useState<string | null>(null);
+  const [instructions, setInstructions] = useState<{
+    reference: string; merchantNumber: string; amount: number;
+  } | null>(null);
 
   async function startDeposit() {
     if (busy) return;
     setError(null);
-    setStatus(null);
+    if (!phone.trim() || phone.replace(/\D/g, "").length < 9) {
+      setError("Please enter your MoMo phone number.");
+      return;
+    }
     setBusy(true);
     try {
-      const r = await api<{ checkoutUrl: string; reference: string }>("/api/payments/deposit", {
-        method: "POST",
-        body:   JSON.stringify({ amount }),
-      });
-      window.location.href = r.checkoutUrl;
+      const r = await api<{ reference: string; merchantNumber: string; amount: number }>(
+        "/api/payments/deposit",
+        { method: "POST", body: JSON.stringify({ amount, phone }) }
+      );
+      setInstructions(r);
     } catch (e: any) {
       setError(e?.message ?? "Could not start deposit");
+    } finally {
       setBusy(false);
     }
   }
@@ -269,51 +259,75 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
       </div>
       <p className="text-muted text-xs mt-1">Add real cedis to your balance via Mobile Money.</p>
 
-      {!DEPOSITS_ENABLED && (
+      {!DEPOSITS_ENABLED ? (
         <div className="mt-3 text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2 text-muted">
           Deposits are temporarily unavailable. Please check back soon.
         </div>
-      )}
+      ) : instructions ? (
+        <div className="mt-4 space-y-3">
+          {/* Payment details card */}
+          <div className="bg-panel2 border border-border rounded-lg p-4 space-y-3">
+            <div>
+              <p className="text-[10px] text-muted uppercase tracking-wider font-semibold mb-0.5">Send to (MTN MoMo)</p>
+              <p className="text-xl font-bold font-mono">{instructions.merchantNumber || "—"}</p>
+            </div>
+            <div className="border-t border-border pt-3">
+              <p className="text-[10px] text-muted uppercase tracking-wider font-semibold mb-0.5">Amount</p>
+              <p className="text-lg font-bold font-mono text-up">₵{instructions.amount.toFixed(2)}</p>
+            </div>
+            <div className="border-t border-border pt-3">
+              <p className="text-[10px] text-muted uppercase tracking-wider font-semibold mb-0.5">Reference / Note</p>
+              <p className="font-mono font-bold text-accent text-base tracking-widest">{instructions.reference}</p>
+              <p className="text-[10px] text-muted mt-0.5">Include this as the payment note — it's how we match your deposit</p>
+            </div>
+          </div>
 
-      {status && (
-        <div className={`mt-3 text-xs rounded-md px-3 py-2 border ${
-          status.type === "ok"
-            ? "bg-up/10 border-up/30 text-up"
-            : status.type === "pending"
-            ? "bg-accent/10 border-accent/30 text-accent"
-            : "bg-down/10 border-down/30 text-down"
-        }`}>
-          {status.text}
+          <div className="text-xs bg-up/10 border border-up/30 rounded-md px-3 py-2 text-up">
+            Send the payment from your MoMo app now. Your balance will be updated once we confirm receipt — usually within a few minutes.
+          </div>
+
+          <p className="text-[10px] text-muted text-center">
+            Need help? Contact support and quote <span className="font-mono text-accent">{instructions.reference}</span>
+          </p>
         </div>
-      )}
+      ) : (
+        <>
+          <div className="mt-3 space-y-2">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Amount (GHS)</div>
+              <input
+                type="number" min={80} max={50000} step={1}
+                value={amount}
+                onChange={(e) => setAmount(Number(e.target.value || 0))}
+                className="input font-mono"
+                disabled={busy}
+              />
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Your MoMo number</div>
+              <input
+                type="tel" inputMode="tel" placeholder="0241234567"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="input font-mono"
+                disabled={busy}
+              />
+              <p className="text-[10px] text-muted mt-1">The number you will send from — used to verify your payment</p>
+            </div>
+          </div>
 
-      <div className="mt-3">
-        <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Amount (GHS)</div>
-        <input
-          type="number" min={80} max={50000} step={1}
-          value={amount}
-          onChange={(e) => setAmount(Number(e.target.value || 0))}
-          className="input font-mono"
-          disabled={busy || !DEPOSITS_ENABLED}
-        />
-      </div>
+          {error && (
+            <div className="mt-3 text-down text-xs bg-down/10 border border-down/30 rounded-md px-3 py-2">{error}</div>
+          )}
 
-      {error && (
-        <div className="mt-3 text-down text-xs bg-down/10 border border-down/30 rounded-md px-3 py-2">{error}</div>
-      )}
-
-      <button
-        onClick={startDeposit}
-        disabled={busy || !DEPOSITS_ENABLED}
-        className="btn btn-up w-full mt-4 py-2.5 disabled:opacity-50"
-      >
-        {busy ? "Redirecting to payment…" : `Deposit ₵${amount.toLocaleString()}`}
-      </button>
-
-      {DEPOSITS_ENABLED && (
-        <p className="text-[10px] text-muted mt-2 text-center">
-          You'll be redirected to a secure page to complete payment via MTN, Telecel, or AirtelTigo.
-        </p>
+          <button
+            onClick={startDeposit}
+            disabled={busy}
+            className="btn btn-up w-full mt-4 py-2.5 disabled:opacity-50"
+          >
+            {busy ? "Setting up…" : `Deposit ₵${amount.toLocaleString()}`}
+          </button>
+        </>
       )}
     </div>
   );

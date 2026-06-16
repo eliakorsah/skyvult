@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
 import { withLock } from "@/lib/mutex";
+import { creditDepositWallet } from "@/lib/depositCredit";
 
 export const runtime = "nodejs";
 
@@ -30,9 +31,26 @@ export async function PATCH(
       .single();
 
     if (!payment) return fail(404, "Payment not found");
-    if (payment.type !== "WITHDRAWAL") return fail(400, "Only withdrawals can be approved/rejected");
     if (payment.status !== "PENDING") return fail(400, `Payment is already ${payment.status}`);
 
+    // ── DEPOSIT ──────────────────────────────────────────────────────────
+    if (payment.type === "DEPOSIT") {
+      if (body.action === "approve") {
+        // creditDepositWallet is idempotent — atomically claims the payment
+        // and credits the wallet exactly once.
+        await creditDepositWallet(payment, Number(payment.amount));
+        return ok({ status: "approved" });
+      }
+      // reject: no wallet refund needed (nothing was debited for a deposit)
+      await supabaseAdmin.from("payments").update({
+        status:         "FAILED",
+        failure_reason: (body.reason ?? "Rejected by admin").slice(0, 200),
+        resolved_at:    new Date().toISOString(),
+      }).eq("id", id).eq("status", "PENDING");
+      return ok({ status: "rejected" });
+    }
+
+    // ── WITHDRAWAL ───────────────────────────────────────────────────────
     if (body.action === "reject") {
       // Refund the wallet, mark FAILED.
       await withLock(`wallet:${payment.user_id}`, async () => {
@@ -70,8 +88,7 @@ export async function PATCH(
       return ok({ status: "rejected" });
     }
 
-    // approve: admin has manually sent the money via Korapay dashboard / MoMo.
-    // Mark SUCCESS so the payment is closed out.
+    // approve withdrawal: admin has manually sent the money via MoMo.
     await supabaseAdmin.from("payments").update({
       status:      "SUCCESS",
       resolved_at: new Date().toISOString(),

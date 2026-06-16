@@ -5,16 +5,16 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
 import { checkLimit } from "@/lib/ratelimit";
 import { RISK, DEPOSITS_ENABLED } from "@/lib/assets";
-import { submitPayment, checkoutUrl, isExpressPayConfigured } from "@/lib/expresspay";
+import { normalizeGhanaPhone } from "@/lib/korapay";
+import { tg } from "@/lib/telegram";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
 
 const Schema = z.object({
   amount: z.number().finite().positive(),
+  phone:  z.string().min(9).max(20),
 });
-
-const APP_URL = process.env.EXPRESSPAY_APP_URL || "https://skyvult.com";
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,65 +24,37 @@ export async function POST(req: NextRequest) {
     if (!DEPOSITS_ENABLED) {
       return fail(503, "Deposits are temporarily unavailable. Please check back soon.");
     }
-    if (!isExpressPayConfigured()) {
-      return fail(503, "Deposits are temporarily unavailable. Please try again later.");
-    }
 
     if (body.amount < RISK.MIN_DEPOSIT) {
       return fail(400, `Minimum deposit is GHS ${RISK.MIN_DEPOSIT}`);
     }
 
+    const phone = normalizeGhanaPhone(body.phone);
+    if (!phone) return fail(400, "Invalid Ghana mobile number");
+
     const rl = await checkLimit(req, "deposit", 5, 600, user.id);
     if (!rl.success) return fail(429, "Too many deposit attempts — try again in a moment");
 
-    const orderId = crypto.randomUUID();
+    const reference      = `DEP-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+    const merchantNumber = process.env.MERCHANT_MOMO_NUMBER || "";
 
     const { error: insErr } = await supabaseAdmin.from("payments").insert({
       user_id:            user.id,
       type:               "DEPOSIT",
       amount:             body.amount,
       status:             "PENDING",
-      provider:           "expresspay",
-      provider_reference: orderId,
+      provider:           "manual",
+      provider_reference: reference,
+      mobile_number:      phone,
     });
     if (insErr) {
-      console.error("[deposit] failed to insert payments row:", insErr.message);
+      console.error("[deposit] insert error:", insErr.message);
       return fail(500, "Could not start deposit");
     }
 
-    const nameParts = (user.name || "").trim().split(/\s+/);
-    const firstname = nameParts[0] || "Customer";
-    const lastname  = nameParts.slice(1).join(" ") || firstname;
+    tg(`💰 <b>Deposit request</b>\n👤 ${user.name} (${user.email})\n💵 ₵${body.amount.toFixed(2)}\n📱 Sending from: ${phone}\n🔖 Ref: <code>${reference}</code>\n➡️ Expecting on: ${merchantNumber}`);
 
-    try {
-      const submit = await submitPayment({
-        firstname,
-        lastname,
-        email:       user.email,
-        amount:      body.amount,
-        orderId,
-        redirectUrl: `${APP_URL}/api/payments/expresspay-callback`,
-        postUrl:     `${APP_URL}/api/payments/expresspay-posturl`,
-      });
-
-      if (submit.status !== 1 || !submit.token) {
-        await supabaseAdmin.from("payments").update({
-          status:         "FAILED",
-          failure_reason: (submit.message || "Payment provider rejected the request").slice(0, 200),
-          resolved_at:    new Date().toISOString(),
-        }).eq("provider_reference", orderId);
-        return fail(400, submit.message || "Could not start payment — please try again");
-      }
-
-      return ok({ checkoutUrl: checkoutUrl(submit.token), reference: orderId });
-    } catch (err: any) {
-      await supabaseAdmin.from("payments").update({
-        status:         "FAILED",
-        failure_reason: (err?.message || "ExpressPay error").slice(0, 200),
-        resolved_at:    new Date().toISOString(),
-      }).eq("provider_reference", orderId);
-      return fail(400, err?.message ?? "Could not start payment");
-    }
+    return ok({ reference, merchantNumber, amount: body.amount });
   } catch (e) {
     return handleError(e);
   }

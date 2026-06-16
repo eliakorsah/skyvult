@@ -256,8 +256,13 @@ function PaymentsSection({
     return true;
   });
 
-  async function handleAction(id: string, action: "approve" | "reject") {
-    if (action === "reject" && !confirm(`Reject this withdrawal and refund the user?`)) return;
+  async function handleAction(id: string, action: "approve" | "reject", type: "DEPOSIT" | "WITHDRAWAL") {
+    if (action === "reject") {
+      const msg = type === "DEPOSIT"
+        ? "Reject this deposit? The user will need to contact support if money was already sent."
+        : "Reject this withdrawal and refund the user?";
+      if (!confirm(msg)) return;
+    }
     setActing(id);
     try { await onAction(id, action); } finally { setActing(null); }
   }
@@ -338,18 +343,18 @@ function PaymentsSection({
                     {p.providerReference?.slice(0, 20)}…
                   </td>
                   <td className="px-3 py-2.5">
-                    {p.type === "WITHDRAWAL" && p.status === "PENDING" ? (
+                    {p.status === "PENDING" ? (
                       <div className="flex items-center gap-1.5">
                         <button
                           disabled={acting === p.id}
-                          onClick={() => handleAction(p.id, "approve")}
+                          onClick={() => handleAction(p.id, "approve", p.type)}
                           className="px-2.5 py-1 text-[10px] font-semibold rounded bg-up/15 text-up border border-up/30 hover:bg-up/25 disabled:opacity-40 transition-colors whitespace-nowrap"
                         >
                           Approve
                         </button>
                         <button
                           disabled={acting === p.id}
-                          onClick={() => handleAction(p.id, "reject")}
+                          onClick={() => handleAction(p.id, "reject", p.type)}
                           className="px-2.5 py-1 text-[10px] font-semibold rounded bg-down/15 text-down border border-down/30 hover:bg-down/25 disabled:opacity-40 transition-colors whitespace-nowrap"
                         >
                           Reject
