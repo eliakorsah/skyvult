@@ -6,6 +6,7 @@ import { ok, fail, handleError } from "@/lib/http";
 import { checkLimit } from "@/lib/ratelimit";
 import { RISK } from "@/lib/assets";
 import { withLock } from "@/lib/mutex";
+import { tg } from "@/lib/telegram";
 
 export const runtime = "nodejs";
 
@@ -114,6 +115,7 @@ export async function POST(req: NextRequest) {
       return fail(400, "Insufficient balance");
     }
 
+    tg(`💸 <b>Withdrawal request</b>\n👤 ${user.name} (${user.email})\n💵 ₵${body.amount} → ${profile.verified_mobile_number} (${profile.verified_mobile_provider})\n🔖 <code>${reference}</code>`);
     return ok({
       reference,
       status:  "pending",

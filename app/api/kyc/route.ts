@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
+import { tg } from "@/lib/telegram";
 import { normalizeGhanaPhone, guessProviderFromPhone } from "@/lib/korapay";
 
 export const runtime = "nodejs";
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
       .update({ kyc_status: "PENDING" })
       .eq("id", user.id);
 
+    tg(`🪪 <b>KYC submitted</b>\n👤 ${user.name} (${user.email})\n📱 ${phone}`);
     return ok({ status: "PENDING" });
   } catch (e) {
     return handleError(e);

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
 import { checkLimit } from "@/lib/ratelimit";
+import { tg } from "@/lib/telegram";
 
 export const runtime = "nodejs";
 
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
       return fail(500, "Could not send your message. Please try again.");
     }
 
+    tg(`💬 <b>Support message</b>\n👤 ${user.name} (${user.email})\n📝 ${body.slice(0, 200)}`);
     return ok({ status: "SENT" });
   } catch (e) {
     return handleError(e);
