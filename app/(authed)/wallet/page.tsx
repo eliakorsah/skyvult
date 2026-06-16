@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { DEPOSITS_ENABLED } from "@/lib/assets";
@@ -10,19 +10,6 @@ type Tx = {
   balanceAfter: number; reference: string | null; isDemo: boolean; createdAt: string;
 };
 
-type Payment = {
-  id: string;
-  type: "DEPOSIT" | "WITHDRAWAL";
-  amount: number;
-  status: "PENDING" | "SUCCESS" | "FAILED" | "ABANDONED";
-  provider: string;
-  providerReference: string | null;
-  mobileProvider: string | null;
-  mobileNumber: string | null;
-  failureReason: string | null;
-  createdAt: string;
-  resolvedAt: string | null;
-};
 
 const TX_COLOR: Record<string, string> = {
   DEPOSIT: "text-up",
@@ -32,26 +19,6 @@ const TX_COLOR: Record<string, string> = {
   WITHDRAWAL: "text-down",
   TRADE_DEBIT: "text-down",
 };
-
-// All three go via Paystack. Some networks resolve immediately via USSD
-// prompt (data.status === "pay_offline"); others require an OTP
-// (data.status === "send_otp"), which the OTP input below collects.
-const PROVIDERS = [
-  { code: "MTN",        label: "MTN MoMo",         enabled: true },
-  { code: "TELECEL",    label: "Telecel Cash",     enabled: true },
-  { code: "AIRTELTIGO", label: "AirtelTigo Money", enabled: true },
-] as const;
-type ProviderCode = (typeof PROVIDERS)[number]["code"];
-
-/** Best-effort network guess from a Ghana phone number. Same prefix table
- *  as the server's `guessProviderFromPhone` so server and client agree. */
-function guess(local10: string): ProviderCode | null {
-  const p = local10.slice(1, 3);
-  if (["24","25","53","54","55","59"].includes(p)) return "MTN";
-  if (["20","50"].includes(p)) return "TELECEL";
-  if (["26","27","28","56","57"].includes(p)) return "AIRTELTIGO";
-  return null;
-}
 
 // ─── Demo top-up card ──────────────────────────────────────────────────
 
@@ -255,118 +222,41 @@ export default function WalletPage() {
 // ─── Deposit card ──────────────────────────────────────────────────────
 
 function DepositCard({ onResolved }: { onResolved: () => void }) {
-  const [amount, setAmount] = useState(80);
-  const [phone, setPhone] = useState("");
-  const [provider, setProvider] = useState<ProviderCode>("MTN");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // While the user is entering their MoMo PIN, we poll the status endpoint
-  // until the webhook resolves the payment one way or the other.
-  const [pending, setPending] = useState<{ reference: string; hint: string } | null>(null);
-  // Some networks (e.g. MTN) require a one-time code before the charge can
-  // proceed — collected here and sent to /api/payments/deposit/otp.
-  const [otp, setOtp] = useState<{ reference: string; hint: string; code: string } | null>(null);
-  const pollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [amount, setAmount]       = useState(80);
+  const [busy,   setBusy]         = useState(false);
+  const [error,  setError]        = useState<string | null>(null);
+  const [status, setStatus]       = useState<{ type: "ok" | "pending" | "err"; text: string } | null>(null);
 
-  // Auto-detect network on phone change (user can still override)
-  function onPhoneChange(v: string) {
-    setPhone(v);
-    const digits = v.replace(/\D/g, "");
-    const local = digits.startsWith("233") ? "0" + digits.slice(3)
-                : digits.startsWith("0")   ? digits
-                : digits.length === 9      ? "0" + digits
-                : "";
-    if (local.length === 10) {
-      const g = guess(local);
-      if (g) setProvider(g);
+  // On return from ExpressPay, read the ?deposit= param and show feedback.
+  useEffect(() => {
+    const params  = new URLSearchParams(window.location.search);
+    const deposit = params.get("deposit");
+    if (!deposit) return;
+    window.history.replaceState({}, "", "/wallet");
+    if (deposit === "success") {
+      setStatus({ type: "ok", text: "Deposit successful! Your balance has been updated." });
+      onResolved();
+    } else if (deposit === "pending") {
+      setStatus({ type: "pending", text: "Payment is processing — your balance will update in a few minutes. Check your transactions list." });
+    } else {
+      const reason = params.get("reason") || "Payment was not completed.";
+      setStatus({ type: "err", text: reason });
     }
-  }
-
-  function stopPolling() {
-    if (pollerRef.current) { clearInterval(pollerRef.current); pollerRef.current = null; }
-  }
-
-  useEffect(() => () => stopPolling(), []);
-
-  function startPolling(reference: string) {
-    // Stops when status leaves PENDING or after ~3 min.
-    let elapsed = 0;
-    pollerRef.current = setInterval(async () => {
-      elapsed += 3;
-      try {
-        const s = await api<Payment & { hint?: string }>(`/api/payments/status?reference=${encodeURIComponent(reference)}`);
-        if (s.status === "SUCCESS") {
-          stopPolling();
-          setPending(null);
-          setBusy(false);
-          setPhone("");
-          onResolved();
-        } else if (s.status === "FAILED" || s.status === "ABANDONED") {
-          stopPolling();
-          setPending(null);
-          setBusy(false);
-          setError(s.failureReason ?? "Payment failed. Please try again.");
-        } else if (s.hint) {
-          setPending((p) => p ? { ...p, hint: s.hint! } : p);
-        }
-      } catch { /* transient — keep polling */ }
-      if (elapsed > 180) {
-        // ~3 min timeout. The actual webhook can still arrive later and
-        // credit the wallet — we just stop tying up the UI.
-        stopPolling();
-        setPending(null);
-        setBusy(false);
-        setError("Taking too long. Check your transactions list in a minute.");
-      }
-    }, 3000);
-  }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function startDeposit() {
     if (busy) return;
     setError(null);
-    if (!phone.trim() || phone.replace(/\D/g, "").length < 9) {
-      setError("Please enter your MoMo phone number.");
-      return;
-    }
+    setStatus(null);
     setBusy(true);
     try {
-      const r = await api<{ reference: string; status: string; message: string }>("/api/payments/deposit", {
+      const r = await api<{ checkoutUrl: string; reference: string }>("/api/payments/deposit", {
         method: "POST",
-        body: JSON.stringify({ amount, phone, provider }),
+        body:   JSON.stringify({ amount }),
       });
-      if (r.status === "send_otp") {
-        // Network needs a one-time code before the charge can proceed.
-        setBusy(false);
-        setOtp({ reference: r.reference, hint: r.message, code: "" });
-        return;
-      }
-      setPending({ reference: r.reference, hint: r.message });
-      startPolling(r.reference);
+      window.location.href = r.checkoutUrl;
     } catch (e: any) {
       setError(e?.message ?? "Could not start deposit");
-      setBusy(false);
-    }
-  }
-
-  async function submitOtp() {
-    if (!otp || busy) return;
-    if (!otp.code.trim()) {
-      setError("Please enter the code sent to your phone.");
-      return;
-    }
-    setError(null);
-    setBusy(true);
-    try {
-      const r = await api<{ status: string; message: string }>("/api/payments/deposit/otp", {
-        method: "POST",
-        body: JSON.stringify({ reference: otp.reference, otp: otp.code }),
-      });
-      const reference = otp.reference;
-      setOtp(null);
-      setPending({ reference, hint: r.message });
-      startPolling(reference);
-    } catch (e: any) {
-      setError(e?.message ?? "Incorrect code — please try again");
       setBusy(false);
     }
   }
@@ -381,79 +271,49 @@ function DepositCard({ onResolved }: { onResolved: () => void }) {
 
       {!DEPOSITS_ENABLED && (
         <div className="mt-3 text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2 text-muted">
-          Deposits are temporarily unavailable while we finish setting up our payment provider. Please check back soon.
+          Deposits are temporarily unavailable. Please check back soon.
         </div>
       )}
 
-      <div className="mt-3 space-y-2">
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Amount (GHS)</div>
-          <input
-            type="number" min={80} max={50000} step={1}
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value || 0))}
-            className="input font-mono"
-            disabled={!!pending || !!otp || !DEPOSITS_ENABLED}
-          />
+      {status && (
+        <div className={`mt-3 text-xs rounded-md px-3 py-2 border ${
+          status.type === "ok"
+            ? "bg-up/10 border-up/30 text-up"
+            : status.type === "pending"
+            ? "bg-accent/10 border-accent/30 text-accent"
+            : "bg-down/10 border-down/30 text-down"
+        }`}>
+          {status.text}
         </div>
+      )}
 
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted mb-1">MoMo number</div>
-          <input
-            type="tel" inputMode="tel" placeholder="0241234567"
-            value={phone}
-            onChange={(e) => onPhoneChange(e.target.value)}
-            className="input font-mono"
-            disabled={!!pending || !!otp || !DEPOSITS_ENABLED}
-          />
-        </div>
-
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Network</div>
-          <div className="grid grid-cols-3 gap-1">
-            {PROVIDERS.map((p) => (
-              <button
-                key={p.code}
-                onClick={() => p.enabled && setProvider(p.code)}
-                disabled={!!pending || !!otp || !p.enabled || !DEPOSITS_ENABLED}
-                title={p.enabled ? undefined : "Coming soon"}
-                className={`tab text-xs py-2 ${provider === p.code ? "tab-active" : "tab-idle bg-panel2"} ${p.enabled ? "" : "opacity-40 cursor-not-allowed"}`}
-              >
-                {p.label.replace(" MoMo", "").replace(" Cash", "").replace(" Money", "")}
-                {!p.enabled && <span className="block text-[9px] normal-case">Soon</span>}
-              </button>
-            ))}
-          </div>
-        </div>
+      <div className="mt-3">
+        <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Amount (GHS)</div>
+        <input
+          type="number" min={80} max={50000} step={1}
+          value={amount}
+          onChange={(e) => setAmount(Number(e.target.value || 0))}
+          className="input font-mono"
+          disabled={busy || !DEPOSITS_ENABLED}
+        />
       </div>
 
-      {error && <div className="mt-3 text-down text-xs bg-down/10 border border-down/30 rounded-md px-3 py-2">{error}</div>}
+      {error && (
+        <div className="mt-3 text-down text-xs bg-down/10 border border-down/30 rounded-md px-3 py-2">{error}</div>
+      )}
 
-      {otp ? (
-        <div className="mt-3 text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2 text-white">
-          <div className="font-semibold text-accent">Enter the code sent to your phone</div>
-          <div className="mt-1 text-muted">{otp.hint || "Enter the OTP sent to your phone to confirm this deposit."}</div>
-          <input
-            type="text" inputMode="numeric" placeholder="Enter code"
-            value={otp.code}
-            onChange={(e) => setOtp((o) => o ? { ...o, code: e.target.value } : o)}
-            className="input font-mono mt-2"
-            autoFocus
-          />
-          <button onClick={submitOtp} disabled={busy} className="btn btn-up w-full mt-2 py-2.5 disabled:opacity-50">
-            {busy ? "Confirming…" : "Confirm code"}
-          </button>
-        </div>
-      ) : pending ? (
-        <div className="mt-3 text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2 text-white">
-          <div className="font-semibold text-accent">Check your phone</div>
-          <div className="mt-1 text-muted">{pending.hint || "Approve the prompt to complete your deposit."}</div>
-          <div className="mt-2 text-[10px] text-muted font-mono break-all">ref: {pending.reference}</div>
-        </div>
-      ) : (
-        <button onClick={startDeposit} disabled={busy || !DEPOSITS_ENABLED} className="btn btn-up w-full mt-4 py-2.5 disabled:opacity-50">
-          {busy ? "Starting…" : `Deposit ₵${amount.toLocaleString()}`}
-        </button>
+      <button
+        onClick={startDeposit}
+        disabled={busy || !DEPOSITS_ENABLED}
+        className="btn btn-up w-full mt-4 py-2.5 disabled:opacity-50"
+      >
+        {busy ? "Redirecting to payment…" : `Deposit ₵${amount.toLocaleString()}`}
+      </button>
+
+      {DEPOSITS_ENABLED && (
+        <p className="text-[10px] text-muted mt-2 text-center">
+          You'll be redirected to a secure page to complete payment via MTN, Telecel, or AirtelTigo.
+        </p>
       )}
     </div>
   );

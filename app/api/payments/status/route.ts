@@ -35,7 +35,10 @@ export async function GET(req: NextRequest) {
     if (pay.status !== "PENDING") return ok(pay);
 
     // Fallback: ask Paystack directly and resolve the payment ourselves if
-    // the webhook hasn't done so yet.
+    // the webhook hasn't done so yet. Only applies to Paystack payments —
+    // ExpressPay payments are resolved via their callback/posturl routes.
+    if (pay.provider !== "paystack") return ok(pay);
+
     try {
       const verify = await verifyCharge(ref);
       const ps = String(verify?.data?.status ?? "").toLowerCase();
