@@ -65,7 +65,7 @@ export const RISK = {
   // "Transaction limit not met"). Normally higher than MIN_TRADE so the
   // per-transaction MoMo fee (~₵0.50–₵1) stays under ~1.5% of the deposit,
   // and high enough that the ₵10 referral bonus can't be farmed profitably.
-  MIN_DEPOSIT: 10,
+  MIN_DEPOSIT: 80,
 };
 
 export const EXPIRY_OPTIONS = [5, 30, 60, 120, 180, 300];

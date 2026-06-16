@@ -2,24 +2,35 @@ import { supabaseAdmin } from "./supabase";
 import { withLock } from "./mutex";
 import { maybePayReferralBonus } from "./referral";
 
-/** Shared, idempotent deposit-credit path used by BOTH the Korapay webhook
- *  and the MTN finalize step. Credits the user's real wallet exactly once for
+/** Shared, idempotent deposit-credit path used by the Paystack webhook and
+ *  the status-route fallback. Credits the user's real wallet exactly once for
  *  a PENDING deposit row, writes the ledger transaction, marks the payment
  *  SUCCESS, and fires the referral-bonus check.
  *
- *  Idempotency: every mutation is gated on `status = 'PENDING'`, so a second
- *  call (webhook retry, double-poll) is a no-op. Safe to call from multiple
- *  places for the same reference.
+ *  Idempotency: the payment row is atomically flipped PENDING→SUCCESS at the
+ *  DB level BEFORE the wallet credit. Only the caller that wins that DB-level
+ *  race proceeds — concurrent callers from different PM2 workers (webhook and
+ *  status-poll arriving at the same instant) are safely serialised this way.
  *
- *  `pay` is the row from `payments` (must include id, user_id, provider_reference).
+ *  `pay` must include id, user_id, provider_reference.
  */
 export async function creditDepositWallet(pay: any, cedis: number): Promise<void> {
   if (!isFinite(cedis) || cedis <= 0) return;
-  if (pay.status !== "PENDING") return;
 
+  // Atomically claim the payment. The WHERE status='PENDING' guard means only
+  // one concurrent caller (across any number of PM2 workers) will get 1 row
+  // back — all others get 0 and bail out immediately.
+  const { data: claimed } = await supabaseAdmin
+    .from("payments")
+    .update({ status: "SUCCESS", resolved_at: new Date().toISOString() })
+    .eq("id", pay.id)
+    .eq("status", "PENDING")
+    .select("id");
+  if (!claimed || claimed.length === 0) return; // another path already resolved it
+
+  // We own the credit — now apply it with optimistic-concurrency retry so
+  // concurrent TRADE mutations don't race against us on the wallet row.
   await withLock(`wallet:${pay.user_id}`, async () => {
-    // Optimistic-concurrency credit with retry — closes the race against the
-    // trade API mutating this user's wallet at the same instant.
     for (let attempt = 0; attempt < 5; attempt++) {
       const { data: wallet } = await supabaseAdmin
         .from("wallets")
@@ -45,17 +56,11 @@ export async function creditDepositWallet(pay: any, cedis: number): Promise<void
           reference: pay.provider_reference,
           is_demo: false,
         });
-        // Mark resolved AFTER the credit lands, gated on PENDING for idempotency.
-        await supabaseAdmin
-          .from("payments")
-          .update({ status: "SUCCESS", resolved_at: new Date().toISOString() })
-          .eq("id", pay.id)
-          .eq("status", "PENDING");
         await maybePayReferralBonus(pay.user_id, cedis);
         return;
       }
     }
-    console.error("[depositCredit] credit failed after retries", pay.provider_reference);
+    console.error("[depositCredit] wallet credit failed after retries — payment already marked SUCCESS, manual reconciliation needed", pay.provider_reference);
   });
 }
 
