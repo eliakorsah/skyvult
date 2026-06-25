@@ -100,22 +100,24 @@ function DemoTopupCard({ current, onResolved }: { current: number; onResolved: (
 }
 
 export default function WalletPage() {
-  const [balance, setBalance] = useState({ real: 0, demo: 0 });
+  const [balance, setBalance] = useState({ real: 0, demo: 0, locked: 0, wagering: 0 });
   const [txs, setTxs] = useState<Tx[]>([]);
   const [kycStatus, setKycStatus] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const [w, t, k] = await Promise.all([
-        api<{ balance: number; demoBalance: number }>("/api/wallet"),
+        api<{ balance: number; demoBalance: number; bonusLocked: number; wageringRemaining: number }>("/api/wallet"),
         api<{ transactions: Tx[] }>("/api/wallet/transactions?limit=50"),
         api<{ kycStatus: string }>("/api/kyc"),
       ]);
-      setBalance({ real: w.balance, demo: w.demoBalance });
+      setBalance({ real: w.balance, demo: w.demoBalance, locked: w.bonusLocked ?? 0, wagering: w.wageringRemaining ?? 0 });
       setTxs(t.transactions);
       setKycStatus(k.kycStatus);
     } catch { /* keep last good values */ }
   }, []);
+
+  const withdrawable = Math.max(0, balance.real - balance.locked);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -166,6 +168,12 @@ export default function WalletPage() {
             <div className="text-2xl md:text-3xl font-bold mt-2 font-mono">
               ₵{balance.real.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
+            {balance.locked > 0 && (
+              <div className="text-[11px] text-accent mt-1.5 font-medium">
+                ₵{balance.locked.toLocaleString(undefined, { minimumFractionDigits: 2 })} locked ·
+                ₵{withdrawable.toLocaleString(undefined, { minimumFractionDigits: 2 })} withdrawable
+              </div>
+            )}
           </div>
           <div className="card p-4 md:p-6">
             <div className="text-xs text-muted uppercase">Demo balance</div>
@@ -175,13 +183,30 @@ export default function WalletPage() {
           </div>
         </div>
 
+        {/* Referral bonus wagering banner */}
+        {balance.locked > 0 && (
+          <div className="mt-4 card p-4 border border-accent/30 bg-accent/5">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <p className="text-sm font-semibold text-accent">🎁 Referral bonus locked</p>
+              <span className="text-[11px] font-mono text-muted">
+                ₵{balance.wagering.toLocaleString(undefined, { minimumFractionDigits: 2 })} to go
+              </span>
+            </div>
+            <p className="text-xs text-muted leading-relaxed">
+              Your ₵{balance.locked.toLocaleString(undefined, { minimumFractionDigits: 2 })} referral bonus unlocks once
+              you trade ₵{balance.wagering.toLocaleString(undefined, { minimumFractionDigits: 2 })} more in real money.
+              Every real trade counts toward it.
+            </p>
+          </div>
+        )}
+
         {/* Demo top-up */}
         <DemoTopupCard current={balance.demo} onResolved={refresh} />
 
         {/* Deposit + Withdraw side-by-side on desktop, stacked on mobile */}
         <div id="deposit" className="grid md:grid-cols-2 gap-3 mt-3">
           <DepositCard onResolved={refresh} />
-          <WithdrawCard available={balance.real} onResolved={refresh} />
+          <WithdrawCard available={withdrawable} onResolved={refresh} />
         </div>
 
         {/* Transactions */}
@@ -223,25 +248,26 @@ export default function WalletPage() {
 
 function DepositCard({ onResolved: _onResolved }: { onResolved: () => void }) {
   const [amount,       setAmount]       = useState(80);
-  const [phone,        setPhone]        = useState("");
   const [busy,         setBusy]         = useState(false);
   const [error,        setError]        = useState<string | null>(null);
+  const [copied,       setCopied]       = useState(false);
   const [instructions, setInstructions] = useState<{
-    reference: string; merchantNumber: string; amount: number;
+    reference: string; amount: number;
+    paymentLink?: string; depositInstructions?: string;
   } | null>(null);
 
   async function startDeposit() {
     if (busy) return;
     setError(null);
-    if (!phone.trim() || phone.replace(/\D/g, "").length < 9) {
-      setError("Please enter your MoMo phone number.");
-      return;
-    }
+    if (amount < 80) { setError("Minimum deposit is ₵80."); return; }
     setBusy(true);
     try {
-      const r = await api<{ reference: string; merchantNumber: string; amount: number }>(
+      const r = await api<{
+        reference: string; amount: number;
+        paymentLink?: string; depositInstructions?: string;
+      }>(
         "/api/payments/deposit",
-        { method: "POST", body: JSON.stringify({ amount, phone }) }
+        { method: "POST", body: JSON.stringify({ amount }) }
       );
       setInstructions(r);
     } catch (e: any) {
@@ -251,13 +277,28 @@ function DepositCard({ onResolved: _onResolved }: { onResolved: () => void }) {
     }
   }
 
+  async function copyReference() {
+    if (!instructions) return;
+    const ref = instructions.reference;
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(ref); setCopied(true); setTimeout(() => setCopied(false), 2500); return; } catch {}
+    }
+    const ta = document.createElement("textarea");
+    ta.value = ref;
+    ta.style.cssText = "position:fixed;left:-9999px;opacity:0";
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { document.execCommand("copy"); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch {}
+    document.body.removeChild(ta);
+  }
+
   return (
     <div className="card p-4 md:p-6">
       <div className="flex items-center justify-between">
-        <div className="font-semibold">Deposit via MoMo</div>
+        <div className="font-semibold">Deposit</div>
         <span className="text-[10px] uppercase tracking-wider text-muted">Min ₵80</span>
       </div>
-      <p className="text-muted text-xs mt-1">Add real cedis to your balance via Mobile Money.</p>
+      <p className="text-muted text-xs mt-1">Add real cedis to your balance.</p>
 
       {!DEPOSITS_ENABLED ? (
         <div className="mt-3 text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2 text-muted">
@@ -265,55 +306,73 @@ function DepositCard({ onResolved: _onResolved }: { onResolved: () => void }) {
         </div>
       ) : instructions ? (
         <div className="mt-4 space-y-3">
-          {/* Payment details card */}
-          <div className="bg-panel2 border border-border rounded-lg p-4 space-y-3">
-            <div>
-              <p className="text-[10px] text-muted uppercase tracking-wider font-semibold mb-0.5">Send to (MTN MoMo)</p>
-              <p className="text-xl font-bold font-mono">{instructions.merchantNumber || "—"}</p>
-            </div>
-            <div className="border-t border-border pt-3">
-              <p className="text-[10px] text-muted uppercase tracking-wider font-semibold mb-0.5">Amount</p>
-              <p className="text-lg font-bold font-mono text-up">₵{instructions.amount.toFixed(2)}</p>
-            </div>
-            <div className="border-t border-border pt-3">
-              <p className="text-[10px] text-muted uppercase tracking-wider font-semibold mb-0.5">Reference / Note</p>
-              <p className="font-mono font-bold text-accent text-base tracking-widest">{instructions.reference}</p>
-              <p className="text-[10px] text-muted mt-0.5">Include this as the payment note — it's how we match your deposit</p>
-            </div>
+          {/* Amount */}
+          <div className="bg-panel2 border border-border rounded-lg p-4">
+            <p className="text-[10px] text-muted uppercase tracking-wider font-semibold mb-0.5">Amount</p>
+            <p className="text-lg font-bold font-mono text-up">₵{instructions.amount.toFixed(2)}</p>
           </div>
+
+          {/* Reference — copy this and paste as the reference on the payment page */}
+          <div className="bg-panel2 border border-accent/40 rounded-lg p-4">
+            <p className="text-[10px] text-accent uppercase tracking-wider font-semibold mb-1">
+              Step 1 · Copy your reference
+            </p>
+            <div className="flex items-center gap-2">
+              <p className="font-mono font-bold text-accent text-lg tracking-widest flex-1 break-all">{instructions.reference}</p>
+              <button
+                onClick={copyReference}
+                className="px-3 py-1.5 rounded-md text-xs font-semibold bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25 transition-colors whitespace-nowrap"
+              >
+                {copied ? "Copied ✓" : "Copy"}
+              </button>
+            </div>
+            <p className="text-[11px] text-muted mt-2">
+              You <span className="text-white font-medium">must</span> paste this as the <span className="text-white font-medium">reference</span> on the payment page — it&apos;s how we match your payment to your account.
+            </p>
+          </div>
+
+          {/* Proceed to pay — opens the payment page */}
+          {instructions.paymentLink ? (
+            <div>
+              <p className="text-[10px] text-muted uppercase tracking-wider font-semibold mb-1">Step 2 · Pay</p>
+              <a
+                href={instructions.paymentLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-up w-full py-3 flex items-center justify-center gap-2"
+              >
+                Proceed to pay →
+              </a>
+            </div>
+          ) : (
+            <div className="text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2 text-muted">
+              Payment is being set up. Please contact support and quote your reference above to complete your deposit.
+            </div>
+          )}
 
           <div className="text-xs bg-up/10 border border-up/30 rounded-md px-3 py-2 text-up">
-            Send the payment from your MoMo app now. Your balance will be updated once we confirm receipt — usually within a few minutes.
+            {instructions.depositInstructions ||
+              "Your balance will be updated once we confirm your payment — usually within a few minutes."}
           </div>
 
-          <p className="text-[10px] text-muted text-center">
-            Need help? Contact support and quote <span className="font-mono text-accent">{instructions.reference}</span>
-          </p>
+          <button
+            onClick={() => { setInstructions(null); setError(null); }}
+            className="w-full py-2 text-xs text-muted hover:text-white transition-colors"
+          >
+            Make another deposit
+          </button>
         </div>
       ) : (
         <>
-          <div className="mt-3 space-y-2">
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Amount (GHS)</div>
-              <input
-                type="number" min={80} max={50000} step={1}
-                value={amount}
-                onChange={(e) => setAmount(Number(e.target.value || 0))}
-                className="input font-mono"
-                disabled={busy}
-              />
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Your MoMo number</div>
-              <input
-                type="tel" inputMode="tel" placeholder="0241234567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="input font-mono"
-                disabled={busy}
-              />
-              <p className="text-[10px] text-muted mt-1">The number you will send from — used to verify your payment</p>
-            </div>
+          <div className="mt-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Amount (GHS)</div>
+            <input
+              type="number" min={80} max={50000} step={1}
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value || 0))}
+              className="input font-mono"
+              disabled={busy}
+            />
           </div>
 
           {error && (

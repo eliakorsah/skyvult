@@ -95,9 +95,9 @@ export default function ReferralPopup({
 
         <div className="w-12 h-12 rounded-full bg-up/15 border border-up/30 flex items-center justify-center text-2xl mb-4">🎁</div>
 
-        <h2 className="text-lg font-bold tracking-tight mb-1">Earn free ₵10 GHS</h2>
+        <h2 className="text-lg font-bold tracking-tight mb-1">Earn free ₵30 GHS</h2>
         <p className="text-sm text-muted mb-4 leading-relaxed">
-          Share your referral link. When a friend signs up and makes their first deposit, you earn <span className="text-up font-semibold">₵10 real money</span> — instantly added to your wallet.
+          Share your referral link. When a friend signs up and makes their first deposit, you earn <span className="text-up font-semibold">₵30 real money</span> — instantly added to your wallet.
         </p>
 
         <div className="bg-panel2 border border-border rounded-lg px-3 py-2 mb-3 flex items-center gap-2">

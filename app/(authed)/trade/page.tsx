@@ -10,7 +10,7 @@ import WinStreakPopup from "@/components/WinStreakPopup";
 import type { ChartHandle } from "@/components/Chart";
 import { useSocket, Tick, ServerMessage } from "@/lib/socket";
 import { api } from "@/lib/api";
-import { getPayoutRatio, ASSET_CONFIGS } from "@/lib/assets";
+import { getPayoutRatio, ASSET_CONFIGS, RISK } from "@/lib/assets";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "@/lib/sessionContext";
 import OnboardingTour from "@/components/OnboardingTour";
@@ -171,6 +171,14 @@ export default function TradePage() {
     }
     return equity;
   }, [walletBalance, openTrades, isDemo, ticksByAsset]);
+
+  // When the settled balance falls below the trade minimum, lock the amount
+  // to whatever is left so the user can still play out their last funds.
+  useEffect(() => {
+    if (walletBalance > 0 && walletBalance < RISK.MIN_TRADE) {
+      setAmount(parseFloat(walletBalance.toFixed(2)));
+    }
+  }, [walletBalance]);
 
   // Push MTM equity to SessionContext at ~4fps so the Nav header balance
   // updates live as candles move — without flooding context at 20fps.

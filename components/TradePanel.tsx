@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { RISK } from "@/lib/assets";
 
 const EXPIRIES = [
   { s: 5,   label: "5s"  },
@@ -47,6 +48,7 @@ export default function TradePanel({
   const [flash, setFlash] = useState<"UP" | "DOWN" | null>(null);
 
   const insufficient = amount > balance;
+  const belowMin = balance > 0 && balance < RISK.MIN_TRADE;
   const profitPct = Math.round((payoutRatio - 1) * 100);
   const win = Math.round(amount * payoutRatio);
 
@@ -111,36 +113,44 @@ export default function TradePanel({
             Balance ₵{balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         </div>
-        <div className="flex items-stretch gap-1">
-          <button
-            onClick={() => setAmount(Math.max(10, amount - 10))}
-            className="px-3 bg-panel2 border border-border rounded-md text-lg font-bold text-muted hover:text-white"
-          >−</button>
-          <input
-            type="number"
-            className="input font-mono text-center text-lg flex-1"
-            min={10}
-            max={5000}
-            step={1}
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value || 0))}
-          />
-          <button
-            onClick={() => setAmount(Math.min(5000, amount + 10))}
-            className="px-3 bg-panel2 border border-border rounded-md text-lg font-bold text-muted hover:text-white"
-          >+</button>
-        </div>
-        <div className="grid grid-cols-5 gap-1 mt-1.5">
-          {QUICK.map((q) => (
-            <button
-              key={q}
-              onClick={() => setAmount(q)}
-              className={`tab text-[11px] py-1.5 ${amount === q ? "tab-active" : "tab-idle bg-panel2"}`}
-            >
-              ₵{q}
-            </button>
-          ))}
-        </div>
+        {belowMin ? (
+          <div className="text-xs text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded-md px-3 py-2 text-center">
+            Balance below ₵{RISK.MIN_TRADE} minimum — trading full ₵{balance.toFixed(2)}
+          </div>
+        ) : (
+          <>
+            <div className="flex items-stretch gap-1">
+              <button
+                onClick={() => setAmount(Math.max(10, amount - 10))}
+                className="px-3 bg-panel2 border border-border rounded-md text-lg font-bold text-muted hover:text-white"
+              >−</button>
+              <input
+                type="number"
+                className="input font-mono text-center text-lg flex-1"
+                min={10}
+                max={5000}
+                step={1}
+                value={amount}
+                onChange={(e) => setAmount(Number(e.target.value || 0))}
+              />
+              <button
+                onClick={() => setAmount(Math.min(5000, amount + 10))}
+                className="px-3 bg-panel2 border border-border rounded-md text-lg font-bold text-muted hover:text-white"
+              >+</button>
+            </div>
+            <div className="grid grid-cols-5 gap-1 mt-1.5">
+              {QUICK.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => setAmount(q)}
+                  className={`tab text-[11px] py-1.5 ${amount === q ? "tab-active" : "tab-idle bg-panel2"}`}
+                >
+                  ₵{q}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {error && (

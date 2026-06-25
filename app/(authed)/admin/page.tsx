@@ -374,6 +374,199 @@ function PaymentsSection({
   );
 }
 
+// ─── Payment settings ────────────────────────────────────────────────────
+
+type PaymentSettings = {
+  paymentLink: string;
+  depositInstructions: string;
+};
+
+function PaymentSettingsSection({
+  settings, onSave,
+}: {
+  settings: PaymentSettings | null;
+  onSave: (patch: PaymentSettings) => Promise<void>;
+}) {
+  const [form, setForm] = useState<PaymentSettings>({
+    paymentLink: "", depositInstructions: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  // Hydrate the form once the settings arrive (don't clobber edits on refresh).
+  useEffect(() => {
+    if (settings && !loaded) { setForm(settings); setLoaded(true); }
+  }, [settings, loaded]);
+
+  async function save() {
+    setBusy(true); setErr(null); setSaved(false);
+    try {
+      await onSave(form);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e: any) {
+      setErr(e?.message ?? "Could not save");
+    } finally { setBusy(false); }
+  }
+
+  const set = (k: keyof PaymentSettings) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-6">
+      {/* Form */}
+      <div className="card p-5 md:p-6">
+        <h3 className="text-sm font-semibold text-white tracking-tight">Deposit payment details</h3>
+        <p className="text-xs text-muted mt-1 mb-5">
+          Shown to users when they request a deposit. They pay here, then you confirm the
+          payment under <span className="text-white font-medium">Payments</span> before any balance is credited.
+        </p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-muted font-semibold">Payment link</label>
+            <input
+              type="url"
+              value={form.paymentLink}
+              onChange={set("paymentLink")}
+              placeholder="https://pay.example.com/your-merchant"
+              className="input mt-1.5 font-mono text-sm"
+              disabled={!loaded || busy}
+            />
+            <p className="text-[10px] text-muted mt-1">The checkout / payment URL users tap to pay. This is the only way users deposit.</p>
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-muted font-semibold">Instructions to user</label>
+            <textarea
+              value={form.depositInstructions}
+              onChange={set("depositInstructions")}
+              rows={3}
+              placeholder="Send the exact amount, then enter the reference…"
+              className="input mt-1.5 text-sm resize-none"
+              disabled={!loaded || busy}
+            />
+          </div>
+        </div>
+
+        {err && <div className="mt-4 text-xs bg-down/10 border border-down/30 text-down rounded-md px-3 py-2">{err}</div>}
+
+        <button
+          onClick={save}
+          disabled={!loaded || busy}
+          className="btn btn-primary w-full mt-5 disabled:opacity-50"
+        >
+          {busy ? "Saving…" : saved ? "Saved ✓" : "Save payment settings"}
+        </button>
+      </div>
+
+      {/* Live preview of what the user sees */}
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-muted font-semibold mb-2">User deposit preview</p>
+        <div className="card p-4 md:p-6">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold">Deposit</div>
+            <span className="text-[10px] uppercase tracking-wider text-muted">Min ₵80</span>
+          </div>
+          <div className="mt-4 space-y-3">
+            {form.paymentLink ? (
+              <div className="btn btn-up w-full py-3 flex items-center justify-center gap-2 cursor-default">
+                Pay ₵80.00 now →
+              </div>
+            ) : (
+              <div className="text-[11px] text-muted bg-panel2 border border-dashed border-border rounded-md px-3 py-2">
+                No payment link set — users can&apos;t deposit until you add one.
+              </div>
+            )}
+            <div className="bg-panel2 border border-border rounded-lg p-4 space-y-3">
+              <div>
+                <p className="text-[10px] text-muted uppercase tracking-wider font-semibold mb-0.5">Amount</p>
+                <p className="text-lg font-bold font-mono text-up">₵80.00</p>
+              </div>
+              <div className="border-t border-border pt-3">
+                <p className="text-[10px] text-muted uppercase tracking-wider font-semibold mb-0.5">Your reference</p>
+                <p className="font-mono font-bold text-accent text-base tracking-widest">DEP-XXXXXXXX</p>
+              </div>
+            </div>
+            <div className="text-xs bg-up/10 border border-up/30 rounded-md px-3 py-2 text-up">
+              {form.depositInstructions || "Pay using the link now. Your balance updates once we confirm receipt."}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Projected monthly revenue ───────────────────────────────────────────
+
+/** Live monthly revenue run-rate. Projects the recent trading volume forward
+ *  a full 30 days and applies the house edge.
+ *
+ *  Volume signal: prefer the last-7-day run-rate (most responsive to current
+ *  activity); fall back to the 30-day actual if the week is empty. Edge: use
+ *  the configured edge (the statistical expectation, ~10%) as the projection
+ *  basis — the realised "effective" edge is shown alongside for reality-check,
+ *  but it swings too much on small samples to project from directly. */
+function ProjectionCard({ stats }: { stats: Stats }) {
+  const dailyVol   = stats.volume7d > 0 ? stats.volume7d / 7 : stats.volume30d / 30;
+  const projVolume = dailyVol * 30;
+  const edge       = stats.configuredEdge;
+  const projRev    = projVolume * edge;
+  const basis      = stats.volume7d > 0 ? "last 7 days" : "last 30 days";
+  const effPct     = stats.effectiveEdge * 100;
+  const enoughSample = stats.wageredAll >= 20_000;
+
+  return (
+    <div className="card p-5 md:p-6 mb-8 border-t-4 border-t-accent relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-accent/8 to-transparent pointer-events-none" />
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">Projected monthly revenue</p>
+        <span className="text-[10px] text-muted bg-panel2 border border-border rounded-full px-2 py-0.5">run-rate · {basis}</span>
+      </div>
+      <p className="text-4xl md:text-5xl font-bold font-mono tabular-nums tracking-tight mt-1 mb-1 text-accent">
+        {fmt(projRev)}
+      </p>
+      <p className="text-[11px] text-muted mb-5">
+        Projected ₵{projVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })} volume × {(edge * 100).toFixed(0)}% house edge.
+        Statistical estimate — actual swings with sample size.
+      </p>
+      <div className="grid grid-cols-3 gap-4 border-t border-border/60 pt-4">
+        <div>
+          <p className="text-[10px] text-muted uppercase tracking-wider mb-0.5">Proj. monthly volume</p>
+          <p className="text-base md:text-lg font-bold font-mono tabular-nums">{fmt(projVolume)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-muted uppercase tracking-wider mb-0.5">House edge (target)</p>
+          <p className="text-base md:text-lg font-bold font-mono tabular-nums">{(edge * 100).toFixed(1)}%</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-muted uppercase tracking-wider mb-0.5">Edge so far (actual)</p>
+          <p className={`text-base md:text-lg font-bold font-mono tabular-nums ${effPct >= 0 ? "text-up" : "text-down"}`}>
+            {enoughSample ? `${effPct.toFixed(2)}%` : "—"}
+          </p>
+          {!enoughSample && <p className="text-[10px] text-muted mt-0.5">Need more volume</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────
+
+type TabKey = "overview" | "payments" | "kyc" | "messages" | "users" | "settings";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "payments", label: "Payments" },
+  { key: "kyc",      label: "KYC" },
+  { key: "messages", label: "Messages" },
+  { key: "users",    label: "Users" },
+  { key: "settings", label: "Settings" },
+];
+
 // ─── Main page ────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -385,10 +578,12 @@ export default function AdminPage() {
   const [paySum,   setPaySum]   = useState<PaymentSummary | null>(null);
   const [kyc,      setKyc]      = useState<KycSubmission[]>([]);
   const [messages, setMessages] = useState<SupportMessage[]>([]);
+  const [settings, setSettings] = useState<PaymentSettings | null>(null);
   const [error,    setError]    = useState<string | null>(null);
   const [authorized, setAuthorized] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
+  const [tab, setTab] = useState<TabKey>("overview");
 
   useEffect(() => {
     let alive = true;
@@ -400,13 +595,14 @@ export default function AdminPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const [s, t, u, p, k, m] = await Promise.all([
+      const [s, t, u, p, k, m, cfg] = await Promise.all([
         api<Stats>("/api/admin/stats"),
         api<{ trades: AdminTrade[] }>("/api/admin/trades?limit=20"),
         api<{ users: AdminUser[] }>("/api/admin/users"),
         api<{ payments: AdminPayment[]; summary: PaymentSummary }>("/api/admin/payments?limit=100"),
         api<{ submissions: KycSubmission[] }>("/api/admin/kyc?status=PENDING"),
         api<{ messages: SupportMessage[] }>("/api/admin/messages"),
+        api<{ settings: PaymentSettings }>("/api/admin/settings"),
       ]);
       setStats(s);
       setTrades(t.trades);
@@ -415,6 +611,7 @@ export default function AdminPage() {
       setPaySum(p.summary);
       setKyc(k.submissions);
       setMessages(m.messages);
+      setSettings(cfg.settings);
       setLastRefresh(Date.now());
       setError(null);
     } catch (e: any) { setError(e.message); }
@@ -453,6 +650,14 @@ export default function AdminPage() {
     refresh();
   }
 
+  async function savePaymentSettings(patch: PaymentSettings) {
+    const r = await api<{ settings: PaymentSettings }>("/api/admin/settings", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    setSettings(r.settings);
+  }
+
   const pnlColor = (n: number) => n >= 0 ? "text-up" : "text-down";
 
   return (
@@ -483,7 +688,39 @@ export default function AdminPage() {
           <div className="mb-4 px-4 py-3 rounded-lg bg-down/10 border border-down/25 text-down text-sm">{error}</div>
         )}
 
-        {!stats ? (
+        {/* Tab navigation */}
+        <div className="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 mb-6 bg-bg/90 backdrop-blur border-b border-border">
+          <div className="flex gap-1 overflow-x-auto py-2">
+            {TABS.map((t) => {
+              const badge =
+                t.key === "payments" ? (paySum?.pendingCount ?? 0) :
+                t.key === "kyc"      ? kyc.length :
+                t.key === "messages" ? messages.filter((m) => m.status !== "RESOLVED").length : 0;
+              const active = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`relative px-3.5 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                    active ? "bg-accent text-black" : "text-muted hover:text-white hover:bg-panel2"
+                  }`}
+                >
+                  {t.label}
+                  {badge > 0 && (
+                    <span className={`ml-1.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold ${
+                      active ? "bg-black/20 text-black" : "bg-down text-white"
+                    }`}>
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Overview ── */}
+        {tab === "overview" && (!stats ? (
           <div className="text-muted text-sm animate-pulse">Loading platform data…</div>
         ) : (
           <>
@@ -509,6 +746,9 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+
+            {/* ── Projected monthly revenue ── */}
+            <ProjectionCard stats={stats} />
 
             {/* ── Key metrics ── */}
             <Section title="Key metrics">
@@ -599,10 +839,45 @@ export default function AdminPage() {
                 <PnlChart data={stats.daily} />
               </div>
             </Section>
+
+            {/* ── Live trades ── */}
+            <Section title="Live trades" count={trades.length}>
+              <div className="card overflow-hidden max-h-[400px] flex flex-col">
+                <div className="overflow-auto flex-1">
+                  <table className="w-full text-sm min-w-[560px]">
+                    <thead className="sticky top-0 z-10 bg-panel">
+                      <tr className="text-left border-b border-border bg-panel2/50">
+                        {["Time", "User", "Asset", "Dir", "Amount", "Status", "Payout"].map((h) => (
+                          <th key={h} className="px-3 py-2.5 text-[10px] font-semibold text-muted uppercase tracking-wider">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trades.length === 0 ? (
+                        <tr><td colSpan={7} className="text-center text-muted py-10 text-sm">No trades yet</td></tr>
+                      ) : trades.map((t) => (
+                        <tr key={t.id} className="border-b border-border/40 hover:bg-panel2/30 transition-colors">
+                          <td className="px-3 py-2.5 text-muted text-xs whitespace-nowrap">{ago(t.createdAt)}</td>
+                          <td className="px-3 py-2.5 text-xs truncate max-w-[140px]">{t.user?.email ?? "—"}</td>
+                          <td className="px-3 py-2.5 text-xs font-medium">{t.asset}</td>
+                          <td className="px-3 py-2.5"><DirBadge dir={t.direction} /></td>
+                          <td className="px-3 py-2.5 font-mono text-xs tabular-nums">
+                            {fmt(t.amount)}{t.isDemo ? <span className="text-muted ml-1 text-[10px]">demo</span> : ""}
+                          </td>
+                          <td className="px-3 py-2.5"><Badge label={t.status} /></td>
+                          <td className="px-3 py-2.5 font-mono text-xs tabular-nums">{fmt(t.payout)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Section>
           </>
-        )}
+        ))}
 
         {/* ── KYC ── */}
+        {tab === "kyc" && (
         <Section title="KYC Verification" count={kyc.length}>
           {kyc.length === 0 ? (
             <p className="text-muted text-sm py-4">No pending KYC submissions.</p>
@@ -689,8 +964,10 @@ export default function AdminPage() {
             </div>
           )}
         </Section>
+        )}
 
         {/* ── Messages ── */}
+        {tab === "messages" && (
         <Section title="Messages" count={messages.filter((m) => m.status !== "RESOLVED").length}>
           {messages.length === 0 ? (
             <p className="text-muted text-sm py-4">No messages.</p>
@@ -736,47 +1013,34 @@ export default function AdminPage() {
             </div>
           )}
         </Section>
+        )}
 
         {/* ── Payments ── */}
+        {tab === "payments" && (
         <Section title="Payments" count={payments.length}>
           <PaymentsSection payments={payments} summary={paySum} onAction={approveOrReject} />
         </Section>
+        )}
 
-        {/* ── Live trades ── */}
-        <Section title="Live trades" count={trades.length}>
-          <div className="card overflow-hidden max-h-[400px] flex flex-col">
-            <div className="overflow-auto flex-1">
-              <table className="w-full text-sm min-w-[560px]">
-                <thead className="sticky top-0 z-10 bg-panel">
-                  <tr className="text-left border-b border-border bg-panel2/50">
-                    {["Time", "User", "Asset", "Dir", "Amount", "Status", "Payout"].map((h) => (
-                      <th key={h} className="px-3 py-2.5 text-[10px] font-semibold text-muted uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {trades.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center text-muted py-10 text-sm">No trades yet</td></tr>
-                  ) : trades.map((t) => (
-                    <tr key={t.id} className="border-b border-border/40 hover:bg-panel2/30 transition-colors">
-                      <td className="px-3 py-2.5 text-muted text-xs whitespace-nowrap">{ago(t.createdAt)}</td>
-                      <td className="px-3 py-2.5 text-xs truncate max-w-[140px]">{t.user?.email ?? "—"}</td>
-                      <td className="px-3 py-2.5 text-xs font-medium">{t.asset}</td>
-                      <td className="px-3 py-2.5"><DirBadge dir={t.direction} /></td>
-                      <td className="px-3 py-2.5 font-mono text-xs tabular-nums">
-                        {fmt(t.amount)}{t.isDemo ? <span className="text-muted ml-1 text-[10px]">demo</span> : ""}
-                      </td>
-                      <td className="px-3 py-2.5"><Badge label={t.status} /></td>
-                      <td className="px-3 py-2.5 font-mono text-xs tabular-nums">{fmt(t.payout)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        {/* ── Settings ── */}
+        {tab === "settings" && (
+        <Section title="Payment & Referral Settings">
+          <PaymentSettingsSection settings={settings} onSave={savePaymentSettings} />
+          <div className="card p-5 md:p-6 mt-6 border-l-2 border-l-up">
+            <p className="text-[10px] uppercase tracking-wider text-muted font-semibold">Referral bonus</p>
+            <p className="text-2xl font-bold font-mono text-up mt-1">₵30.00</p>
+            <p className="text-xs text-muted mt-1.5 max-w-md">
+              Paid automatically to a referrer the first time the person they referred makes a
+              confirmed deposit (min ₵80). The bonus is credited <span className="text-white font-medium">locked</span>:
+              the referrer must trade ₵30 in real money (1× wagering) before it can be withdrawn —
+              so it can&apos;t be cashed straight out. Fixed in code — change requires a code review.
+            </p>
           </div>
         </Section>
+        )}
 
         {/* ── Users ── */}
+        {tab === "users" && (
         <Section title="Users" count={users.length}>
           <div className="card overflow-hidden max-h-[480px] flex flex-col">
             <div className="overflow-auto flex-1">
@@ -822,6 +1086,7 @@ export default function AdminPage() {
             </div>
           </div>
         </Section>
+        )}
 
         {/* Footer */}
         <div className="mt-12 pb-6 flex items-center justify-between text-[11px] text-muted border-t border-border pt-4">

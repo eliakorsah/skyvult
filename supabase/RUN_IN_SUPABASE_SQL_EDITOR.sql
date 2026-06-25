@@ -129,6 +129,22 @@ CREATE INDEX IF NOT EXISTS support_messages_status_idx
 CREATE INDEX IF NOT EXISTS support_messages_user_idx
   ON support_messages (user_id, created_at DESC);
 
+-- ── 010: Platform settings (admin-configurable payment link) ──
+CREATE TABLE IF NOT EXISTS platform_settings (
+  key        text PRIMARY KEY,
+  value      text NOT NULL DEFAULT '',
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO platform_settings (key, value) VALUES
+  ('payment_link',         ''),
+  ('deposit_instructions', 'Pay using the link above, then keep your reference. Your balance is credited once we confirm receipt.')
+ON CONFLICT (key) DO NOTHING;
+
+-- ── 011: Referral bonus wagering lock ─────────────────────────
+ALTER TABLE wallets
+  ADD COLUMN IF NOT EXISTS bonus_locked       numeric(12,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS wagering_remaining numeric(12,2) NOT NULL DEFAULT 0;
+
 -- ============================================================
 -- Done. The kyc-docs storage bucket is auto-created by the
 -- app on the first KYC upload — no manual bucket setup needed.

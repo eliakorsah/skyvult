@@ -64,7 +64,7 @@ export const RISK = {
   // real floor enforced by MTN/Korapay (smaller amounts are rejected with
   // "Transaction limit not met"). Normally higher than MIN_TRADE so the
   // per-transaction MoMo fee (~₵0.50–₵1) stays under ~1.5% of the deposit,
-  // and high enough that the ₵10 referral bonus can't be farmed profitably.
+  // and high enough that the ₵30 referral bonus can't be farmed profitably.
   MIN_DEPOSIT: 80,
 };
 

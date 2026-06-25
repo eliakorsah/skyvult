@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "@/lib/api";
+import { RISK } from "@/lib/assets";
 const EXPIRIES = [
   { s: 5,   label: "5s"  },
   { s: 30,  label: "30s" },
@@ -41,13 +42,14 @@ export default function MobileTradeBar({
   const [picker, setPicker] = useState<null | "amount" | "expiry">(null);
 
   const insufficient = amount > balance;
+  const belowMin = balance > 0 && balance < RISK.MIN_TRADE;
   const profitPct = Math.round((payoutRatio - 1) * 100);
   const profit    = Math.round(amount * (payoutRatio - 1));
   const payout    = Math.round(amount * payoutRatio);
 
   async function place(direction: "UP" | "DOWN") {
     if (busy) return;
-    if (amount < 10) { setError("Minimum trade is ₵10"); return; }
+    if (amount < RISK.MIN_TRADE && !belowMin) { setError(`Minimum trade is ₵${RISK.MIN_TRADE}`); return; }
     if (insufficient) { setError("Insufficient balance"); return; }
     setError(null);
     setBusy(true);
@@ -94,21 +96,29 @@ export default function MobileTradeBar({
             {picker === "amount" ? (
               <>
                 <div className="text-xs text-muted mb-2">Trade amount (GHS)</div>
-                <input
-                  type="number"
-                  className="input font-mono mb-2"
-                  min={10} max={5000} step={1}
-                  value={amount}
-                  onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v) && v >= 0) setAmount(v); }}
-                />
-                <div className="grid grid-cols-4 gap-1.5">
-                  {QUICK_AMOUNTS.map((q) => (
-                    <button key={q} onClick={() => { setAmount(q); setPicker(null); }}
-                      className={`tab text-xs py-2 ${amount === q ? "tab-active" : "tab-idle bg-panel2"}`}>
-                      ₵{q}
-                    </button>
-                  ))}
-                </div>
+                {belowMin ? (
+                  <div className="text-xs text-yellow-400 bg-yellow-400/10 border border-yellow-400/30 rounded-md px-3 py-2 text-center mb-2">
+                    Balance below ₵{RISK.MIN_TRADE} — trading full ₵{balance.toFixed(2)}
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="number"
+                      className="input font-mono mb-2"
+                      min={10} max={5000} step={1}
+                      value={amount}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v) && v >= 0) setAmount(v); }}
+                    />
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {QUICK_AMOUNTS.map((q) => (
+                        <button key={q} onClick={() => { setAmount(q); setPicker(null); }}
+                          className={`tab text-xs py-2 ${amount === q ? "tab-active" : "tab-idle bg-panel2"}`}>
+                          ₵{q}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <>

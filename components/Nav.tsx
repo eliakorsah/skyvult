@@ -235,15 +235,15 @@ export default function Nav({
 
         {/* Right side */}
         <div className="flex items-center gap-2">
-          {/* Referral shortcut — copies share link; earns the user ₵10 when
+          {/* Referral shortcut — copies share link; earns the user ₵30 when
               a referee makes their first qualifying deposit. */}
           {me?.referralCode && (
             <button
               onClick={() => onShowReferral?.()}
-              title="Share your referral link and earn ₵10"
+              title="Share your referral link and earn ₵30"
               className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md font-semibold border border-up/40 text-up bg-up/10 hover:bg-up/20 transition-colors"
             >
-              Free ₵10
+              Free ₵30
             </button>
           )}
 
@@ -310,7 +310,7 @@ export default function Nav({
                   {/* Referral panel — code + share link + per-user stats.
                       Bonus credits when a referee makes a deposit ≥ ₵80. */}
                   <div className="px-2 py-2 border-t border-border mt-1">
-                    <div className="text-[10px] uppercase tracking-wider text-muted">Refer & earn ₵10</div>
+                    <div className="text-[10px] uppercase tracking-wider text-muted">Refer & earn ₵30</div>
                     <div className="mt-1 flex items-center gap-2">
                       <span className="font-mono text-sm text-accent truncate flex-1">
                         {referral?.code ?? me?.referralCode ?? "—"}
@@ -490,7 +490,7 @@ export default function Nav({
               className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-up hover:bg-up/10 transition-all w-full text-left border border-up/20 bg-up/5"
             >
               <span className="w-5 text-center text-base leading-none">🎁</span>
-              Refer & earn ₵10
+              Refer & earn ₵30
             </button>
           )}
 

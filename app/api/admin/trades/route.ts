@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ok, handleError } from "@/lib/http";
-import { serializeTrade } from "../../trades/route";
+import { serializeTrade } from "@/lib/serializeTrade";
 
 export const runtime = "nodejs";
 

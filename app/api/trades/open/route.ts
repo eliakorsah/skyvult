@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ok, fail, handleError } from "@/lib/http";
 import { checkLimit } from "@/lib/ratelimit";
-import { serializeTrade } from "../route";
+import { serializeTrade } from "@/lib/serializeTrade";
 
 export const runtime = "nodejs";
 

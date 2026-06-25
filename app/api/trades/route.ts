@@ -8,6 +8,8 @@ import { ok, fail, handleError } from "@/lib/http";
 import { isValidAsset, RISK, EXPIRY_OPTIONS, tpSlDistance } from "@/lib/assets";
 import { withLock } from "@/lib/mutex";
 import { checkLimit } from "@/lib/ratelimit";
+import { progressWagering } from "@/lib/referral";
+import { serializeTrade } from "@/lib/serializeTrade";
 
 export const runtime = "nodejs";
 
@@ -72,26 +74,6 @@ async function getLivePrice(asset: string): Promise<number | null> {
   }
 }
 
-export function serializeTrade(t: Record<string, any>) {
-  return {
-    id: t.id,
-    asset: t.asset,
-    direction: t.direction,
-    amount: Number(t.amount),
-    entryPrice: Number(t.entry_price),
-    exitPrice: t.exit_price != null ? Number(t.exit_price) : null,
-    tpPrice:   t.tp_price != null ? Number(t.tp_price) : null,
-    slPrice:   t.sl_price != null ? Number(t.sl_price) : null,
-    expirySeconds: t.expiry_seconds,
-    expiresAt: t.expires_at,
-    status: t.status,
-    payout: Number(t.payout),
-    isDemo: t.is_demo,
-    createdAt: t.created_at,
-    resolvedAt: t.resolved_at,
-  };
-}
-
 export async function POST(req: NextRequest) {
   try {
     const user = await requireUser(req);
@@ -99,7 +81,6 @@ export async function POST(req: NextRequest) {
 
     if (!isValidAsset(body.asset)) return fail(400, "Invalid asset");
     if (!EXPIRY_OPTIONS.includes(body.expirySeconds)) return fail(400, "Invalid expiry");
-    if (body.amount < RISK.MIN_TRADE) return fail(400, `Minimum trade is GHS ${RISK.MIN_TRADE}`);
     if (body.amount > RISK.MAX_TRADE) return fail(400, `Maximum trade is GHS ${RISK.MAX_TRADE}`);
 
     // Rate limit: 20 trade attempts / 10s per user (prevents spam / botting)
@@ -128,6 +109,11 @@ export async function POST(req: NextRequest) {
       if (!wallet) return fail(404, "Wallet not found");
 
       const before = Number(body.isDemo ? wallet.demo_balance : wallet.balance);
+      // If settled balance is below the minimum, allow the user to trade their
+      // full remaining balance in one go — otherwise enforce the normal floor.
+      if (before >= RISK.MIN_TRADE && body.amount < RISK.MIN_TRADE) {
+        return fail(400, `Minimum trade is GHS ${RISK.MIN_TRADE}`);
+      }
       if (before < body.amount) return fail(400, "Insufficient balance");
       const after = before - body.amount;
 
@@ -206,6 +192,12 @@ export async function POST(req: NextRequest) {
         reference: trade.id,
         is_demo: body.isDemo,
       });
+
+      // Real-money trades count toward any referral wagering requirement.
+      // Fire-and-forget — a side effect that must never delay or fail the trade.
+      if (!body.isDemo) {
+        progressWagering(user.id, body.amount).catch(() => {});
+      }
 
       if (body.amount > RISK.LARGE_TRADE_THRESHOLD) {
         await supabaseAdmin.from("large_trade_logs").insert({

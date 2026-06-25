@@ -19,6 +19,18 @@ function makeReference(userId: string): string {
   return `wd_${userId.replace(/-/g, "").slice(0, 12)}_${rand}`;
 }
 
+/** Best-effort read of the locked referral bonus. Returns 0 if the wagering
+ *  columns don't exist yet (migration 011 not applied) so withdrawals keep
+ *  working — the lock just isn't enforced until the migration is run. */
+async function readBonusLocked(userId: string): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from("wallets")
+    .select("bonus_locked")
+    .eq("user_id", userId)
+    .single();
+  return data ? Number((data as any).bonus_locked ?? 0) : 0;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await requireUser(req);
@@ -46,14 +58,20 @@ export async function POST(req: NextRequest) {
     const rl = await checkLimit(req, "withdraw", 3, 1800, user.id);
     if (!rl.success) return fail(429, "Too many withdrawal attempts — try again later");
 
-    // Pre-check balance before acquiring the lock (fast path).
+    // Pre-check balance before acquiring the lock (fast path). The locked
+    // referral bonus is NOT withdrawable until its wagering requirement is met.
     const { data: wallet } = await supabaseAdmin
       .from("wallets")
       .select("balance")
       .eq("user_id", user.id)
       .single();
     if (!wallet) return fail(500, "Wallet not found");
-    if (Number(wallet.balance) < body.amount) return fail(400, "Insufficient balance");
+    const locked = await readBonusLocked(user.id);
+    if (Number(wallet.balance) - locked < body.amount) {
+      return fail(400, locked > 0
+        ? `Insufficient withdrawable balance — ₵${locked.toFixed(2)} of referral bonus is locked until you meet its wagering requirement.`
+        : "Insufficient balance");
+    }
 
     const reference = makeReference(user.id);
 
@@ -75,6 +93,9 @@ export async function POST(req: NextRequest) {
 
     let debitOk = false;
     await withLock(`wallet:${user.id}`, async () => {
+      // Re-read the lock inside the mutex so a referral bonus credited between
+      // the pre-check and here can't be withdrawn before its wagering is met.
+      const lockedNow = await readBonusLocked(user.id);
       for (let attempt = 0; attempt < 5; attempt++) {
         const { data: w } = await supabaseAdmin
           .from("wallets")
@@ -83,7 +104,7 @@ export async function POST(req: NextRequest) {
           .single();
         if (!w) return;
         const before = Number(w.balance);
-        if (before < body.amount) return;
+        if (before - lockedNow < body.amount) return;
         const after = before - body.amount;
         const { data: upd } = await supabaseAdmin
           .from("wallets")
