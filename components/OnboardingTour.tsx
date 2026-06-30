@@ -280,8 +280,8 @@ export default function OnboardingTour() {
               className="absolute left-1/2 -translate-x-1/2"
               style={
                 cardBelow
-                  ? { top: -ARROW, width: 0, height: 0, borderLeft: `${ARROW}px solid transparent`, borderRight: `${ARROW}px solid transparent`, borderBottom: `${ARROW}px solid #161b28` }
-                  : { bottom: -ARROW, width: 0, height: 0, borderLeft: `${ARROW}px solid transparent`, borderRight: `${ARROW}px solid transparent`, borderTop: `${ARROW}px solid #161b28` }
+                  ? { top: -ARROW, width: 0, height: 0, borderLeft: `${ARROW}px solid transparent`, borderRight: `${ARROW}px solid transparent`, borderBottom: `${ARROW}px solid #2c3340` }
+                  : { bottom: -ARROW, width: 0, height: 0, borderLeft: `${ARROW}px solid transparent`, borderRight: `${ARROW}px solid transparent`, borderTop: `${ARROW}px solid #2c3340` }
               }
             />
           )}
@@ -289,7 +289,7 @@ export default function OnboardingTour() {
           <div
             className="rounded-2xl overflow-hidden"
             style={{
-              background: "#161b28",
+              background: "#2c3340",
               border: "1px solid rgba(255,255,255,0.07)",
               boxShadow: "0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(247,166,0,0.1)",
             }}

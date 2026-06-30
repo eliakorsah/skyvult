@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
       return fail(400, "Insufficient balance");
     }
 
-    tg(`💸 <b>Withdrawal request</b>\n👤 ${user.name} (${user.email})\n💵 ₵${body.amount} → ${profile.verified_mobile_number} (${profile.verified_mobile_provider})\n🔖 <code>${reference}</code>`);
+    await tg(`💸 <b>Withdrawal request</b>\n👤 ${user.name} (${user.email})\n💵 ₵${body.amount} → ${profile.verified_mobile_number} (${profile.verified_mobile_provider})\n🔖 <code>${reference}</code>`);
     return ok({
       reference,
       status:  "pending",

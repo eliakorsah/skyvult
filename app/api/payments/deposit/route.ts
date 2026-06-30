@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       return fail(500, "Could not start deposit");
     }
 
-    tg(`💰 <b>Deposit request</b>\n👤 ${user.name} (${user.email})\n💵 ₵${body.amount.toFixed(2)}\n🔖 Ref: <code>${reference}</code>`);
+    await tg(`💰 <b>Deposit request</b>\n👤 ${user.name} (${user.email})\n💵 ₵${body.amount.toFixed(2)}\n🔖 Ref: <code>${reference}</code>`);
 
     return ok({ reference, paymentLink, depositInstructions, amount: body.amount });
   } catch (e) {

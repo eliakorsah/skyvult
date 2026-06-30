@@ -349,6 +349,17 @@ export default function Nav({
                   <button onClick={() => { setMenuOpen(false); logout(); }} className="w-full text-left px-2 py-2 hover:bg-panel2 rounded-md text-down text-sm border-t border-border mt-1">
                     Log out
                   </button>
+
+                  {/* Legal */}
+                  <div className="flex items-center gap-3 px-2 pt-2 mt-1 border-t border-border text-[11px] text-muted">
+                    <Link href="/terms" onClick={() => setMenuOpen(false)} className="hover:text-white transition-colors">
+                      Terms
+                    </Link>
+                    <span className="opacity-40">·</span>
+                    <Link href="/privacy" onClick={() => setMenuOpen(false)} className="hover:text-white transition-colors">
+                      Privacy
+                    </Link>
+                  </div>
                 </motion.div>
               </>
             )}
@@ -378,7 +389,7 @@ export default function Nav({
       {/* Drawer panel */}
       <div
         className={`md:hidden fixed top-0 right-0 h-full w-[300px] z-50 flex flex-col
-          bg-[#0d1017] border-l border-white/10
+          bg-panel border-l border-white/10
           transition-transform duration-300 ease-in-out
           ${mobileNavOpen ? "translate-x-0" : "translate-x-full"}`}
         onClick={(e) => e.stopPropagation()}
@@ -502,6 +513,17 @@ export default function Nav({
             <span className="w-5 text-center text-base leading-none">→</span>
             Log out
           </button>
+
+          {/* Legal */}
+          <div className="flex items-center justify-center gap-3 mt-2 pt-3 border-t border-white/8 text-[11px] text-muted">
+            <Link href="/terms" onClick={() => setMobileNavOpen(false)} className="hover:text-white transition-colors">
+              Terms
+            </Link>
+            <span className="opacity-40">·</span>
+            <Link href="/privacy" onClick={() => setMobileNavOpen(false)} className="hover:text-white transition-colors">
+              Privacy
+            </Link>
+          </div>
         </div>
       </div>
     </>

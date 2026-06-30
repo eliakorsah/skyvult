@@ -298,17 +298,17 @@ export default function Chart({
     const chart = createChart(containerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "#6b7280",
+        textColor: "#9aa3b5",
         fontSize: 11,
         fontFamily: "ui-monospace, SFMono-Regular, monospace",
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: "#161b24", style: 1 },
-        horzLines: { color: "#161b24", style: 1 },
+        vertLines: { color: "#2c3340", style: 1 },
+        horzLines: { color: "#2c3340", style: 1 },
       },
       rightPriceScale: {
-        borderColor: "#1f2630",
+        borderColor: "#3a4454",
         // Tight margins so even small price moves take up real vertical space
         scaleMargins: { top: 0.05, bottom: 0.05 },
         entireTextOnly: true,
@@ -319,7 +319,7 @@ export default function Chart({
       },
       leftPriceScale: { visible: false },
       timeScale: {
-        borderColor: "#1f2630",
+        borderColor: "#3a4454",
         timeVisible: true,
         secondsVisible: true,
         rightOffset: 8,
@@ -330,8 +330,8 @@ export default function Chart({
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: "#3d4a5c", width: 1, style: 3, labelBackgroundColor: "#1f2630" },
-        horzLine: { color: "#3d4a5c", width: 1, style: 3, labelBackgroundColor: "#1f2630" },
+        vertLine: { color: "#4a5668", width: 1, style: 3, labelBackgroundColor: "#3a4454" },
+        horzLine: { color: "#4a5668", width: 1, style: 3, labelBackgroundColor: "#3a4454" },
       },
       autoSize: true,
       // Panning the chart body stays horizontal-only (so a vertical swipe to
@@ -627,7 +627,7 @@ export default function Chart({
   return (
     <div className="w-full h-full flex flex-col">
       {/* Timeframe + chart-type bar — sits above the chart so it's never obscured */}
-      <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 border-b border-[#1f2630] bg-bg/80 backdrop-blur-sm">
+      <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 border-b border-border bg-bg/80 backdrop-blur-sm">
         {TIMEFRAMES.map((t) => (
           <button
             key={t.s}
@@ -635,7 +635,7 @@ export default function Chart({
             className={`text-[11px] px-2.5 py-1 rounded font-semibold transition-colors touch-manipulation select-none ${
               tf === t.s
                 ? "bg-accent text-black"
-                : "bg-[#161b24] text-[#6b7280] hover:text-white border border-[#1f2630]"
+                : "bg-panel2 text-muted hover:text-white border border-border"
             }`}
           >
             {t.label}
@@ -654,7 +654,7 @@ export default function Chart({
               className={`text-[12px] leading-none w-7 h-7 flex items-center justify-center rounded font-semibold transition-colors touch-manipulation select-none ${
                 chartType === c.type
                   ? "bg-accent text-black"
-                  : "bg-[#161b24] text-[#6b7280] hover:text-white border border-[#1f2630]"
+                  : "bg-panel2 text-muted hover:text-white border border-border"
               }`}
             >
               {c.icon}

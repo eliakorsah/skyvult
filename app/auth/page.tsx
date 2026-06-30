@@ -262,8 +262,11 @@ function AuthForm() {
 
           </div>
 
-          <div className="mt-5 text-xs text-muted text-center">
-            By continuing you agree to our terms. Educational use only.
+          <div className="mt-5 text-xs text-muted text-center leading-relaxed">
+            By continuing you agree to our{" "}
+            <Link href="/terms" className="text-accent hover:underline">Terms of Service</Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="text-accent hover:underline">Privacy Policy</Link>.
           </div>
         </div>
       </div>

@@ -234,7 +234,12 @@ export default function TradePage() {
           {/* Hero image */}
           <div
             className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-            style={{ backgroundImage: "url('/hero.jpg')", opacity: 0.7 }}
+            style={{
+              backgroundImage: "url('/hero.jpg')",
+              opacity: 0.7,
+              maskImage: "radial-gradient(ellipse at center, transparent 45%, black 100%)",
+              WebkitMaskImage: "radial-gradient(ellipse at center, transparent 45%, black 100%)",
+            }}
           />
           {/* Dark gradient overlay — dims the image so candles stay readable */}
           <div className="absolute inset-0 bg-gradient-to-b from-bg/80 via-bg/60 to-bg/80" />

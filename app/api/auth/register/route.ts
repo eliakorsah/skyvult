@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     });
     if (signInErr || !session.session) return fail(400, "Account created — please sign in.");
 
-    tg(`🆕 <b>New signup</b>\n👤 ${body.name}\n📧 ${body.email}`);
+    await tg(`🆕 <b>New signup</b>\n👤 ${body.name}\n📧 ${body.email}`);
     return ok({
       accessToken: session.session.access_token,
       refreshToken: session.session.refresh_token,

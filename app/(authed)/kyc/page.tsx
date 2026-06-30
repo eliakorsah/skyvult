@@ -308,7 +308,7 @@ export default function KycPage() {
       </motion.div>
 
       {/* Sticky submit bar — sits above the iOS home indicator */}
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-[#0b0e14]/90 backdrop-blur-md px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-bg/90 backdrop-blur-md px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
         <div className="max-w-md mx-auto">
           <button
             type="submit"

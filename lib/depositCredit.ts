@@ -57,7 +57,7 @@ export async function creditDepositWallet(pay: any, cedis: number): Promise<void
           reference: pay.provider_reference,
           is_demo: false,
         });
-        tg(`💰 <b>Deposit confirmed</b>\n₵${cedis.toFixed(2)} via ${pay.mobile_provider ?? "MoMo"}\n📱 ${pay.mobile_number ?? ""}\n🔖 <code>${pay.provider_reference}</code>`);
+        await tg(`💰 <b>Deposit confirmed</b>\n₵${cedis.toFixed(2)} via ${pay.mobile_provider ?? "MoMo"}\n📱 ${pay.mobile_number ?? ""}\n🔖 <code>${pay.provider_reference}</code>`);
         await maybePayReferralBonus(pay.user_id, cedis);
         return;
       }

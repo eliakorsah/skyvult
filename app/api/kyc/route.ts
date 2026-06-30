@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       .update({ kyc_status: "PENDING" })
       .eq("id", user.id);
 
-    tg(`🪪 <b>KYC submitted</b>\n👤 ${user.name} (${user.email})\n📱 ${phone}`);
+    await tg(`🪪 <b>KYC submitted</b>\n👤 ${user.name} (${user.email})\n📱 ${phone}`);
     return ok({ status: "PENDING" });
   } catch (e) {
     return handleError(e);

@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       return fail(500, "Could not send your message. Please try again.");
     }
 
-    tg(`💬 <b>Support message</b>\n👤 ${user.name} (${user.email})\n📝 ${body.slice(0, 200)}`);
+    await tg(`💬 <b>Support message</b>\n👤 ${user.name} (${user.email})\n📝 ${body.slice(0, 200)}`);
     return ok({ status: "SENT" });
   } catch (e) {
     return handleError(e);

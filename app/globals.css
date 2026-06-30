@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body { height: 100%; background: #0b0e14; color: #e6e9ef; }
+html, body { height: 100%; background: #1a1f29; color: #f0f2f7; }
 * { box-sizing: border-box; }
 
 .btn {
@@ -17,7 +17,7 @@ html, body { height: 100%; background: #0b0e14; color: #e6e9ef; }
 .input {
   @apply w-full bg-panel2 border border-border rounded-md px-3 py-2.5 text-white outline-none focus:border-accent transition-colors text-base;
 }
-.card  { @apply bg-panel border border-border rounded-xl; }
+.card  { @apply bg-panel border border-border rounded-xl shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset,0_4px_16px_-4px_rgba(0,0,0,0.5)]; }
 
 .tab       { @apply px-3 py-2 sm:py-1.5 rounded-md text-sm cursor-pointer transition-colors touch-manipulation; }
 .tab-active{ @apply bg-accent text-black font-semibold; }
@@ -44,8 +44,8 @@ html, body { height: 100%; background: #0b0e14; color: #e6e9ef; }
 
 /* Mobile-first scrollbars */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #0b0e14; }
-::-webkit-scrollbar-thumb { background: #1f2630; border-radius: 3px; }
+::-webkit-scrollbar-track { background: #1a1f29; }
+::-webkit-scrollbar-thumb { background: #3a4454; border-radius: 3px; }
 
 /* Trade bar height including iOS safe-area inset — used by chart offset and pickers */
 :root { --trade-bar-h: calc(210px + env(safe-area-inset-bottom, 0px)); }

@@ -45,7 +45,7 @@ export default function Preloader() {
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            background: "#0b0e14",
+            background: "#1a1f29",
             gap: 0,
           }}
         >
