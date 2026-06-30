@@ -63,6 +63,7 @@ function Lightbox({ url, label, onClose }: { url: string; label: string; onClose
 type Stats = {
   totalUsers: number; blockedUsers: number; activeTrades: number;
   userLiability: number; openExposure: number;
+  totalDeposits: number; netWithdrawals: number; cashFloat: number; withdrawableProfit: number;
   volume24h: number; volume7d: number; volume30d: number;
   housePnl24h: number; housePnl7d: number; housePnl30d: number; housePnlAll: number;
   wageredAll: number; paidAll: number;
@@ -554,6 +555,57 @@ function ProjectionCard({ stats }: { stats: Stats }) {
   );
 }
 
+// ─── Withdrawable profit (real cash) ─────────────────────────────────────
+
+/** The one number that answers "how much can I actually take out?".
+ *
+ *  Withdrawable = cash float − money owed to users − reserve for open trades.
+ *  Cash float = all real deposits − all real withdrawals. This is REAL cash,
+ *  not the House P&L scoreboard: you must always leave enough behind to pay
+ *  out every user's balance and any open trade that wins. */
+function WithdrawableProfitCard({ stats }: { stats: Stats }) {
+  const safe   = stats.withdrawableProfit;
+  const positive = safe > 0;
+  const reserved = stats.userLiability + stats.openExposure;
+
+  return (
+    <div className={`card p-5 md:p-6 mb-8 border-t-4 relative overflow-hidden ${positive ? "border-t-up" : "border-t-border"}`}>
+      <div className={`absolute inset-0 bg-gradient-to-br ${positive ? "from-up/8" : "from-transparent"} to-transparent pointer-events-none`} />
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold text-muted uppercase tracking-widest">Withdrawable profit · real cash</p>
+        <span className="text-[10px] text-muted bg-panel2 border border-border rounded-full px-2 py-0.5">safe to take out</span>
+      </div>
+      <p className={`text-4xl md:text-5xl font-bold font-mono tabular-nums tracking-tight mt-1 mb-1 ${positive ? "text-up" : "text-muted"}`}>
+        {fmt(Math.max(0, safe))}
+      </p>
+      <p className="text-[11px] text-muted mb-5 leading-relaxed">
+        Cash you can withdraw and still cover everyone. This is{" "}
+        <span className="text-white">not</span> the House P&amp;L — it already sets aside{" "}
+        <span className="font-mono">{fmt(reserved)}</span> to pay out user balances and open trades.
+        {safe < 0 && <span className="text-down"> You are currently short of your reserve — do not withdraw.</span>}
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-border/60 pt-4">
+        <div>
+          <p className="text-[10px] text-muted uppercase tracking-wider mb-0.5">Deposits in</p>
+          <p className="text-base md:text-lg font-bold font-mono tabular-nums text-up">{fmt(stats.totalDeposits)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-muted uppercase tracking-wider mb-0.5">Withdrawals out</p>
+          <p className="text-base md:text-lg font-bold font-mono tabular-nums text-down">{fmt(stats.netWithdrawals)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-muted uppercase tracking-wider mb-0.5">Owed to users</p>
+          <p className="text-base md:text-lg font-bold font-mono tabular-nums">{fmt(stats.userLiability)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-muted uppercase tracking-wider mb-0.5">Reserved · open trades</p>
+          <p className="text-base md:text-lg font-bold font-mono tabular-nums">{fmt(stats.openExposure)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Tabs ─────────────────────────────────────────────────────────────────
 
 type TabKey = "overview" | "payments" | "kyc" | "messages" | "users" | "settings";
@@ -746,6 +798,9 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+
+            {/* ── Withdrawable profit (real cash) ── */}
+            <WithdrawableProfitCard stats={stats} />
 
             {/* ── Projected monthly revenue ── */}
             <ProjectionCard stats={stats} />

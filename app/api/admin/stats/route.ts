@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
       { count: referredTotal },
       { count: referredQualified },
       { data: bonusRows },
+      { data: cashRows },
       vol24, vol7d, vol30d,
       pnl24, pnl7d, pnl30d, pnlAll,
     ] = await Promise.all([
@@ -70,6 +71,10 @@ export async function GET(req: NextRequest) {
       supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }).not("referred_by", "is", null),
       supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }).not("referred_by", "is", null).eq("referral_bonus_paid", true),
       supabaseAdmin.from("transactions").select("amount").eq("type", "REFERRAL_BONUS"),
+      // Real cash movements — to compute actual float and withdrawable profit.
+      // Amounts are stored as positive magnitudes; direction is the `type`.
+      supabaseAdmin.from("transactions").select("type, amount").eq("is_demo", false)
+        .in("type", ["DEPOSIT", "WITHDRAWAL", "WITHDRAWAL_REVERSAL"]),
       volumeSince(since24h),
       volumeSince(since7d),
       volumeSince(since30d),
@@ -84,6 +89,23 @@ export async function GET(req: NextRequest) {
       (s, r) => s + Number((r as any).amount) * PAYOUT_RATIO, 0,
     );
     const referralBonusPaid = (bonusRows ?? []).reduce((s, r) => s + Number((r as any).amount), 0);
+
+    // Real cash in/out. Withdrawals debit the balance when requested (PENDING)
+    // and are reversed if rejected, so net withdrawals = debits − reversals.
+    let totalDeposits = 0, withdrawDebit = 0, withdrawReversal = 0;
+    for (const r of cashRows ?? []) {
+      const amt = Number((r as any).amount);
+      const t = (r as any).type;
+      if (t === "DEPOSIT") totalDeposits += amt;
+      else if (t === "WITHDRAWAL") withdrawDebit += amt;
+      else if (t === "WITHDRAWAL_REVERSAL") withdrawReversal += amt;
+    }
+    const netWithdrawals = withdrawDebit - withdrawReversal;
+    // Cash physically held = everything deposited minus everything withdrawn.
+    const cashFloat = totalDeposits - netWithdrawals;
+    // What you can safely pocket: float minus what you still owe users and a
+    // full reserve for open trades winning. Never let this drop your buffer.
+    const withdrawableProfit = cashFloat - userLiability - openExposure;
 
     // Effective edge across lifetime = realized P&L ÷ total wagered.
     // Drifts close to the configured edge (10%) over volume; sample size
@@ -102,6 +124,12 @@ export async function GET(req: NextRequest) {
       userLiability,
       // Worst-case if every open trade wins.
       openExposure,
+      // Real cash position
+      totalDeposits,
+      netWithdrawals,
+      cashFloat,
+      // Cash you can safely take out (float − liabilities − open-trade reserve).
+      withdrawableProfit,
       // Trade volume — different windows
       volume24h: vol24,
       volume7d:  vol7d,
